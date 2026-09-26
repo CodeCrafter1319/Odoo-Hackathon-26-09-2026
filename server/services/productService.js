@@ -144,10 +144,32 @@ export const getProducts = async (query) => {
     .populate('category', 'name isActive')
     .sort(sort)
     .skip(skip)
-    .limit(parseInt(limit));
+    .limit(parseInt(limit))
+    .lean();
+
+  const productIds = data.map(p => p._id);
+  const stockBalances = await StockBalance.aggregate([
+    { $match: { product: { $in: productIds } } },
+    { $group: { _id: '$product', totalQuantity: { $sum: '$quantity' } } }
+  ]);
+
+  const stockMap = new Map(stockBalances.map(sb => [sb._id.toString(), sb.totalQuantity]));
+
+  const productsWithStock = data.map(product => {
+    const quantity = stockMap.get(product._id.toString()) || 0;
+    let stockStatus = 'In Stock';
+    if (quantity <= 0) stockStatus = 'Out of Stock';
+    else if (quantity <= (product.reorderLevel || 0)) stockStatus = 'Low Stock';
+
+    return {
+      ...product,
+      stockQuantity: quantity,
+      stockStatus
+    };
+  });
 
   return {
-    data,
+    data: productsWithStock,
     pagination: {
       page: parseInt(page),
       limit: parseInt(limit),
