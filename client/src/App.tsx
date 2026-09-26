@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
-import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService, transferService } from "./services"
+import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService, transferService, adjustmentService } from "./services"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -308,6 +308,8 @@ function Badge({ children }: { children: string }) {
     SCHEDULED: "bg-info-soft text-info",
     "In Transit": "bg-warning-soft text-warning",
     Pending: "bg-warning-soft text-warning",
+    PENDING: "bg-warning-soft text-warning",
+    APPROVED: "bg-info-soft text-info",
     Approved: "bg-info-soft text-info",
     Received: "bg-success-soft text-success",
     Canceled: "bg-danger-soft text-danger",
@@ -2227,16 +2229,11 @@ const initialAdjustments: AdjustmentRecord[] = [
 ]
 
 function DifferenceValue({ value }: { value: number }) {
-  return (
-    <span
-      className={`font-bold ${
-        value > 0 ? "text-success" : value < 0 ? "text-danger" : "text-muted"
-      }`}
-    >
-      {value > 0 ? "+" : ""}
-      {value}
-    </span>
-  )
+  if (value === 0)
+    return <span className="font-bold text-muted">No change</span>
+  if (value > 0)
+    return <span className="font-bold text-success">+{value}</span>
+  return <span className="font-bold text-danger">{value}</span>
 }
 
 function InventoryAdjustments({
@@ -2244,101 +2241,124 @@ function InventoryAdjustments({
 }: {
   showToast: (message: string) => void
 }) {
-  const [records, setRecords] = useState(initialAdjustments)
+  const [records, setRecords] = useState<any[]>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
   const [formOpen, setFormOpen] = useState(false)
-  const [search, setSearch] = useState("")
-  const [status, setStatus] = useState("All statuses")
-  const [warehouse, setWarehouse] = useState("All warehouses")
-  const [location, setLocation] = useState("All locations")
   const [form, setForm] = useState({
     warehouse: "",
     location: "",
     product: "",
-    systemQuantity: "0",
+    systemQuantity: "",
     countedQuantity: "",
     reason: "",
   })
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const difference =
-    Number(form.countedQuantity || 0) - Number(form.systemQuantity || 0)
+  const [formError, setFormError] = useState("")
 
-  const update = (field: keyof typeof form, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }))
-    setErrors((current) => ({ ...current, [field]: "" }))
+  const [search, setSearch] = useState("")
+  const [status, setStatus] = useState("All statuses")
+  const [warehouse, setWarehouse] = useState("All warehouses")
+  const [location, setLocation] = useState("All locations")
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [adjRes, whRes, locRes, prodRes] = await Promise.all([
+        adjustmentService.getAdjustments({ limit: "100" }), // Or we can use adjustmentService if imported
+        warehouseService.getWarehouses({ limit: "100" }),
+        locationService.getLocations({ limit: "100" }),
+        productService.getProducts({ limit: "100" })
+      ])
+      setRecords(adjRes.adjustments || adjRes.data || [])
+      setWarehouses(whRes.data || [])
+      setLocations(locRes.data || [])
+      setProducts(prodRes.data || [])
+    } catch (err: any) {
+      setError(err.message || "Failed to load adjustments")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const selectProduct = (product: string) => {
-    const quantities: Record<string, string> = {
-      Desk: "50",
-      Table: "50",
-      "Office Chair": "24",
-      "Storage Shelf": "14",
-    }
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const update = (field: string, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }))
+    setFormError("")
+  }
+
+  const selectProduct = (productId: string) => {
+    const selected = products.find(p => p._id === productId)
     setForm((current) => ({
       ...current,
-      product,
-      systemQuantity: quantities[product] || "0",
+      product: productId,
+      systemQuantity: selected ? (selected.stockQuantity || "0") : "0",
     }))
-    setErrors((current) => ({ ...current, product: "" }))
+    setFormError("")
   }
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const nextErrors: Record<string, string> = {}
-    if (!form.warehouse) nextErrors.warehouse = "Warehouse is required."
-    if (!form.location) nextErrors.location = "Location is required."
-    if (!form.product) nextErrors.product = "Product is required."
-    if (form.countedQuantity === "" || Number(form.countedQuantity) < 0)
-      nextErrors.countedQuantity = "Enter a valid counted quantity."
-    if (!form.reason.trim()) nextErrors.reason = "Reason is required."
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors)
-      return
-    }
+    setFormError("")
 
-    setRecords((current) => [
-      {
-        reference: `ADJ/2025/${String(current.length + 32).padStart(4, "0")}`,
+    try {
+      await adjustmentService.createAdjustment({
         warehouse: form.warehouse,
         location: form.location,
-        product: form.product,
-        systemQuantity: Number(form.systemQuantity),
-        countedQuantity: Number(form.countedQuantity),
-        reason: form.reason.trim(),
-        status: "Draft",
-      },
-      ...current,
-    ])
-    setForm({
-      warehouse: "",
-      location: "",
-      product: "",
-      systemQuantity: "0",
-      countedQuantity: "",
-      reason: "",
-    })
-    setErrors({})
-    setFormOpen(false)
-    showToast("Inventory adjustment created successfully.")
+        reason: form.reason,
+        items: [{ product: form.product, countedQuantity: Number(form.countedQuantity) }]
+      })
+      showToast("Inventory adjustment created successfully.")
+      setForm({ warehouse: "", location: "", product: "", systemQuantity: "", countedQuantity: "", reason: "" })
+      setFormOpen(false)
+      loadData()
+    } catch (err: any) {
+      setFormError(err.message || "Failed to create adjustment")
+    }
+  }
+
+  const handleAction = async (id: string, action: 'approve' | 'complete') => {
+    try {
+      if (action === 'approve') await adjustmentService.approveAdjustment(id)
+      if (action === 'complete') await adjustmentService.completeAdjustment(id)
+      showToast(`Adjustment ${action}d successfully.`)
+      loadData()
+    } catch (err: any) {
+      alert(err.message || `Failed to ${action} adjustment`)
+    }
   }
 
   const filteredRecords = records.filter((record) => {
     const term = search.toLowerCase()
-    return (
-      (record.reference.toLowerCase().includes(term) ||
-        record.product.toLowerCase().includes(term)) &&
-      (status === "All statuses" || record.status === status) &&
-      (warehouse === "All warehouses" || record.warehouse === warehouse) &&
-      (location === "All locations" || record.location === location)
-    )
+    const matchesSearch =
+      record.adjustmentNumber?.toLowerCase().includes(term) ||
+      record.items?.[0]?.product?.name?.toLowerCase().includes(term)
+      
+    const matchesStatus = status === "All statuses" || record.status === status || record.status?.toUpperCase() === status.toUpperCase()
+    const matchesWarehouse = warehouse === "All warehouses" || record.warehouse?.name === warehouse || record.warehouse === warehouse
+    const matchesLocation = location === "All locations" || record.location?.code === location || record.location === location
+      
+    return matchesSearch && matchesStatus && matchesWarehouse && matchesLocation
   })
+
+  if (loading && !records.length) return <div className="p-12 text-center text-muted">Loading adjustments...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
+
+  const difference = Number(form.countedQuantity || 0) - Number(form.systemQuantity || 0)
 
   return (
     <div className="grid gap-6">
       <PageHeading
         eyebrow="Operations"
         title="Inventory Adjustments"
-        description="Reconcile physical counts with system quantities."
+        description="Correct and update physical stock levels."
         action={
           <Button icon="plus" onClick={() => setFormOpen(true)}>
             New Adjustment
@@ -2351,7 +2371,7 @@ function InventoryAdjustments({
             <div>
               <h2 className="font-bold text-ink">New Inventory Adjustment</h2>
               <p className="mt-1 text-xs text-muted">
-                Compare the physical count with the current stock balance.
+                Define the location, product, and physical count.
               </p>
             </div>
             <IconButton
@@ -2359,56 +2379,41 @@ function InventoryAdjustments({
               label="Close form"
               onClick={() => {
                 setFormOpen(false)
-                setErrors({})
+                setForm({ warehouse: "", location: "", product: "", systemQuantity: "", countedQuantity: "", reason: "" })
+                setFormError("")
               }}
             />
           </div>
           <form onSubmit={submit} className="grid gap-5 p-6 md:grid-cols-2">
+            {formError && <div className="text-danger text-sm md:col-span-2">{formError}</div>}
+            
             <Field label="Warehouse">
               <Select
                 value={form.warehouse}
                 onChange={(value) => update("warehouse", value)}
               >
                 <option value="">Select warehouse</option>
-                <option>Central Warehouse</option>
-                <option>East Warehouse</option>
+                {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
               </Select>
-              {errors.warehouse && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.warehouse}
-                </span>
-              )}
             </Field>
+            
             <Field label="Location">
               <Select
                 value={form.location}
                 onChange={(value) => update("location", value)}
               >
                 <option value="">Select location</option>
-                <option>WH / Stock 1</option>
-                <option>WH / Stock 2</option>
-                <option>WH / Stock 3</option>
+                {locations.filter(l => !form.warehouse || l.warehouse === form.warehouse).map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
               </Select>
-              {errors.location && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.location}
-                </span>
-              )}
             </Field>
+            
             <Field label="Product">
               <Select value={form.product} onChange={selectProduct}>
                 <option value="">Select product</option>
-                <option>Desk</option>
-                <option>Table</option>
-                <option>Office Chair</option>
-                <option>Storage Shelf</option>
+                {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
               </Select>
-              {errors.product && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.product}
-                </span>
-              )}
             </Field>
+
             <Field label="System Quantity">
               <input
                 readOnly
@@ -2416,9 +2421,10 @@ function InventoryAdjustments({
                 className="h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-muted outline-none"
               />
               <span className="text-xs font-normal text-subtle">
-                Read from StockBalance when the backend is connected.
+                System estimates total across all locations here. Real delta is calculated on backend.
               </span>
             </Field>
+            
             <Field label="Counted Quantity">
               <Input
                 type="number"
@@ -2426,12 +2432,8 @@ function InventoryAdjustments({
                 onChange={(value) => update("countedQuantity", value)}
                 placeholder="Enter physical count"
               />
-              {errors.countedQuantity && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.countedQuantity}
-                </span>
-              )}
             </Field>
+            
             <Field label="Difference">
               <span
                 className={`flex h-11 items-center rounded-lg border px-3 ${
@@ -2445,29 +2447,28 @@ function InventoryAdjustments({
                 <DifferenceValue value={difference} />
               </span>
             </Field>
+            
             <Field label="Reason" className="md:col-span-2">
               <Input
                 value={form.reason}
                 onChange={(value) => update("reason", value)}
                 placeholder="Explain the reason for this adjustment"
               />
-              {errors.reason && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.reason}
-                </span>
-              )}
             </Field>
+
             <div className="flex justify-end gap-3 md:col-span-2">
               <Button
+                type="button"
                 variant="secondary"
                 onClick={() => {
                   setFormOpen(false)
-                  setErrors({})
+                  setForm({ warehouse: "", location: "", product: "", systemQuantity: "", countedQuantity: "", reason: "" })
+                  setFormError("")
                 }}
               >
                 Cancel
               </Button>
-              <Button type="submit" icon="check">
+              <Button type="submit" icon="check" disabled={loading}>
                 Create Adjustment
               </Button>
             </div>
@@ -2484,22 +2485,19 @@ function InventoryAdjustments({
           />
           <Select value={status} onChange={setStatus}>
             <option>All statuses</option>
-            <option>Draft</option>
-            <option>Pending</option>
-            <option>Approved</option>
-            <option>Done</option>
-            <option>Canceled</option>
+            <option value="DRAFT">Draft</option>
+            <option value="PENDING">Pending</option>
+            <option value="APPROVED">Approved</option>
+            <option value="DONE">Done</option>
+            <option value="CANCELED">Canceled</option>
           </Select>
           <Select value={warehouse} onChange={setWarehouse}>
             <option>All warehouses</option>
-            <option>Central Warehouse</option>
-            <option>East Warehouse</option>
+            {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
           </Select>
           <Select value={location} onChange={setLocation}>
             <option>All locations</option>
-            <option>WH / Stock 1</option>
-            <option>WH / Stock 2</option>
-            <option>WH / Stock 3</option>
+            {locations.map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
           </Select>
         </div>
         <DataTable
@@ -2514,19 +2512,29 @@ function InventoryAdjustments({
             "Status",
             "Actions",
           ]}
-          rows={filteredRecords.map((record) => [
-            <span className="font-bold text-brand">{record.reference}</span>,
-            record.location,
-            record.product,
-            record.systemQuantity,
-            record.countedQuantity,
-            <DifferenceValue
-              value={record.countedQuantity - record.systemQuantity}
-            />,
-            record.reason,
-            <Badge>{record.status}</Badge>,
-            <IconButton icon="edit" label={`Edit ${record.reference}`} />,
-          ])}
+          rows={filteredRecords.map((record) => {
+            const l = locations.find(loc => loc._id === (record.location?._id || record.location))?.code
+            const p = products.find(p => p._id === (record.items?.[0]?.product?._id || record.items?.[0]?.product))?.name
+
+            const sq = record.items?.[0]?.systemQuantity || 0
+            const cq = record.items?.[0]?.countedQuantity || 0
+            const diff = record.items?.[0]?.difference || 0
+
+            return [
+              <span className="font-bold text-brand">{record.adjustmentNumber}</span>,
+              l || "Unknown",
+              p || "Unknown",
+              sq,
+              cq,
+              <DifferenceValue value={diff} />,
+              record.reason,
+              <Badge>{record.status}</Badge>,
+              <div className="flex gap-2">
+                {record.status === 'DRAFT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'approve')}>Approve</Button>}
+                {record.status === 'APPROVED' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
+              </div>
+            ]
+          })}
         />
         {!filteredRecords.length && (
           <div className="border-t border-line p-10 text-center text-sm text-muted">
