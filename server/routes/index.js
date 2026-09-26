@@ -7,6 +7,7 @@ import categoryRoutes from './categoryRoutes.js';
 import productRoutes from './productRoutes.js';
 import warehouseRoutes from './warehouseRoutes.js';
 import locationRoutes from './locationRoutes.js';
+import receiptRoutes from './receiptRoutes.js';
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -19,6 +20,7 @@ router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
 router.use('/warehouses', warehouseRoutes);
 router.use('/locations', locationRoutes);
+router.use('/receipts', receiptRoutes);
 router.use('/operations', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
 router.use('/ledger', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
 router.use('/dashboard', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
