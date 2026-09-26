@@ -1,5 +1,6 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
 import { authService } from "./services/authService"
+import { dashboardService } from "./services/dashboardService"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -636,6 +637,30 @@ function DashboardCard({
 }
 
 function Dashboard({ setPage }: { setPage: (page: Page) => void }) {
+  const [data, setData] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  useEffect(() => {
+    let mounted = true;
+    const fetchDashboard = async () => {
+      try {
+        setLoading(true)
+        const response = await dashboardService.getSummary()
+        if (mounted) setData(response.data || response)
+      } catch (err: any) {
+        if (mounted) setError(err.message || "Failed to load dashboard")
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    fetchDashboard()
+    return () => { mounted = false; }
+  }, [])
+
+  if (loading) return <div className="p-12 text-center text-muted">Loading dashboard...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
+
   return (
     <div className="grid gap-7">
       <PageHeading
@@ -659,20 +684,40 @@ function Dashboard({ setPage }: { setPage: (page: Page) => void }) {
           </div>
         }
       />
+      
+      <div className="grid gap-6 grid-cols-2 lg:grid-cols-4">
+        <Card className="p-5">
+          <p className="text-xs font-semibold text-muted uppercase">Total Products in Stock</p>
+          <p className="mt-2 text-2xl font-bold text-ink">{data?.totalProductsInStock || 0}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-xs font-semibold text-muted uppercase">Low Stock</p>
+          <p className="mt-2 text-2xl font-bold text-warning">{data?.lowStockProducts || 0}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-xs font-semibold text-muted uppercase">Out of Stock</p>
+          <p className="mt-2 text-2xl font-bold text-danger">{data?.outOfStockProducts || 0}</p>
+        </Card>
+        <Card className="p-5">
+          <p className="text-xs font-semibold text-muted uppercase">Scheduled Transfers</p>
+          <p className="mt-2 text-2xl font-bold text-brand">{data?.scheduledTransfers || 0}</p>
+        </Card>
+      </div>
+
       <div className="grid gap-6 lg:grid-cols-2">
         <DashboardCard
           type="Receipt"
-          primary="4"
-          late={1}
-          operations={6}
+          primary={String(data?.pendingReceipts || 0)}
+          late={0}
+          operations={data?.pendingReceipts || 0}
           onOpen={() => setPage("Receipts")}
         />
         <DashboardCard
           type="Delivery"
-          primary="4"
-          late={1}
-          waiting={2}
-          operations={6}
+          primary={String(data?.pendingDeliveries || 0)}
+          late={0}
+          waiting={0}
+          operations={data?.pendingDeliveries || 0}
           onOpen={() => setPage("Delivery")}
         />
       </div>
@@ -681,7 +726,7 @@ function Dashboard({ setPage }: { setPage: (page: Page) => void }) {
           <div>
             <h2 className="font-bold text-ink">Operation definitions</h2>
             <p className="mt-1 text-sm text-muted">
-              Counts are calculated from each operation’s scheduled date and
+              Counts are calculated from each operation's scheduled date and
               stock availability.
             </p>
           </div>
