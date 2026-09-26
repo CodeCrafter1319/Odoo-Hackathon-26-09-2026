@@ -306,6 +306,7 @@ function Badge({ children }: { children: string }) {
     "Out of Stock": "bg-danger-soft text-danger",
     "Low Stock": "bg-warning-soft text-warning",
     "In Stock": "bg-success-soft text-success",
+    Inactive: "bg-neutral-soft text-muted",
   }
   return (
     <span
@@ -2328,6 +2329,68 @@ function WarehouseSettings({
   setPage: (page: Page) => void
   showToast: (message: string) => void
 }) {
+  const [dataList, setDataList] = useState<any[]>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
+  const [form, setForm] = useState({ name: "", code: "", address: "", warehouse: "" })
+  const [formError, setFormError] = useState("")
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const whRes = await warehouseService.getWarehouses({ limit: "100" })
+      setWarehouses(whRes.data || [])
+      
+      if (locations) {
+        const locRes = await locationService.getLocations({ limit: "100" })
+        setDataList(locRes.data || [])
+      } else {
+        setDataList(whRes.data || [])
+      }
+    } catch (err: any) {
+      setError(err.message || "Failed to load data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+    setForm({ name: "", code: "", address: "", warehouse: "" })
+    setFormError("")
+  }, [locations])
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setFormError("")
+    try {
+      if (locations) {
+        await locationService.createLocation({
+          name: form.name,
+          code: form.code,
+          warehouse: form.warehouse,
+          type: 'storage'
+        })
+      } else {
+        await warehouseService.createWarehouse({
+          name: form.name,
+          code: form.code,
+          address: form.address
+        })
+      }
+      showToast(`${locations ? "Location" : "Warehouse"} created successfully.`)
+      setForm({ name: "", code: "", address: "", warehouse: "" })
+      loadData()
+    } catch (err: any) {
+      setFormError(err.message || "Failed to save")
+    }
+  }
+
+  if (loading) return <div className="p-12 text-center text-muted">Loading settings...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
+
   return (
     <div className="grid gap-6">
       <PageHeading
@@ -2367,32 +2430,41 @@ function WarehouseSettings({
               Fields follow the structure defined in the system workflow.
             </p>
           </div>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault()
-              showToast(
-                `${locations ? "Location" : "Warehouse"} saved successfully.`,
-              )
-            }}
-            className="grid gap-5 p-6"
-          >
+          <form onSubmit={submit} className="grid gap-5 p-6">
+            {formError && <div className="text-danger text-sm">{formError}</div>}
             <Field label="Name">
               <Input
-                defaultValue={locations ? "Stock Room 1" : "Central Warehouse"}
+                value={form.name}
+                onChange={(v) => setForm({ ...form, name: v })}
+                placeholder={locations ? "e.g. Stock Room 1" : "e.g. Central Warehouse"}
               />
             </Field>
             <Field label="Short Code">
-              <Input defaultValue={locations ? "STOCK1" : "WH"} />
+              <Input 
+                value={form.code}
+                onChange={(v) => setForm({ ...form, code: v })}
+                placeholder={locations ? "e.g. STOCK1" : "e.g. WH"} 
+              />
             </Field>
             {locations ? (
               <Field label="Warehouse">
-                <Select>
-                  <option>WH — Central Warehouse</option>
+                <Select
+                  value={form.warehouse}
+                  onChange={(v) => setForm({ ...form, warehouse: v })}
+                >
+                  <option value="">Select a warehouse</option>
+                  {warehouses.map(w => (
+                    <option key={w._id} value={w._id}>{w.code} - {w.name}</option>
+                  ))}
                 </Select>
               </Field>
             ) : (
               <Field label="Address">
-                <Input defaultValue="1400 Commerce Avenue, Austin, TX" />
+                <Input 
+                  value={form.address}
+                  onChange={(v) => setForm({ ...form, address: v })}
+                  placeholder="e.g. 1400 Commerce Avenue" 
+                />
               </Field>
             )}
             <div className="flex justify-end">
@@ -2407,32 +2479,32 @@ function WarehouseSettings({
             <Icon name={locations ? "pin" : "warehouse"} />
           </span>
           <h2 className="mt-5 text-lg font-bold text-ink">
-            {locations ? "Warehouse locations" : "Central Warehouse"}
+            {locations ? "Warehouse locations" : "Active Warehouses"}
           </h2>
           <p className="mt-2 text-sm leading-relaxed text-muted">
             {locations
               ? "A warehouse can hold multiple locations, such as stock rooms, receiving zones, and dispatch areas."
-              : "The short code is used to generate operation references and uniquely identify this warehouse."}
+              : "Active warehouses configured in the system for receiving and storing inventory."}
           </p>
-          {locations && (
-            <div className="mt-5 divide-y divide-line rounded-lg border border-line">
-              {["Stock Room 1", "Stock Room 2", "Receiving"].map(
-                (location, index) => (
-                  <div
-                    key={location}
-                    className="flex items-center justify-between p-3"
-                  >
-                    <span className="text-sm font-semibold text-ink">
-                      {location}
+          <div className="mt-5 divide-y divide-line rounded-lg border border-line">
+            {dataList.length === 0 ? (
+              <div className="p-4 text-center text-sm text-muted">No entries found.</div>
+            ) : (
+              dataList.map((item) => (
+                <div key={item._id} className="flex items-center justify-between p-3">
+                  <div>
+                    <span className="block text-sm font-semibold text-ink flex items-center gap-2">
+                      {item.name}
+                      {!item.isActive && <Badge>Inactive</Badge>}
                     </span>
-                    <span className="text-xs text-muted">
-                      {index < 2 ? `WH/Stock ${index + 1}` : "WH/Input"}
+                    <span className="block text-xs text-muted mt-0.5">
+                      {locations ? `${item.warehouse?.code || ''} / ${item.code} (${item.type})` : `${item.code} - ${item.address}`}
                     </span>
                   </div>
-                ),
-              )}
-            </div>
-          )}
+                </div>
+              ))
+            )}
+          </div>
         </Card>
       </div>
     </div>
