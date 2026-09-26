@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
-import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService, transferService, adjustmentService } from "./services"
+import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService, transferService, adjustmentService, ledgerService } from "./services"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -310,6 +310,11 @@ function Badge({ children }: { children: string }) {
     Pending: "bg-warning-soft text-warning",
     PENDING: "bg-warning-soft text-warning",
     APPROVED: "bg-info-soft text-info",
+    INITIAL_STOCK: "bg-neutral-soft text-ink",
+    ADJUSTMENT: "bg-neutral-soft text-ink",
+    TRANSFER: "bg-neutral-soft text-ink",
+    DELIVERY: "bg-neutral-soft text-ink",
+    RECEIPT: "bg-neutral-soft text-ink", 
     Approved: "bg-info-soft text-info",
     Received: "bg-success-soft text-success",
     Canceled: "bg-danger-soft text-danger",
@@ -2891,98 +2896,102 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
 }
 
 function MoveHistory() {
-  const [view, setView] = useState<"list" | "kanban">("list")
-  const rows = [
-    [
-      "WH/IN/0001",
-      "24/05/2025",
-      "Azure Interior",
-      "Vendor",
-      "WH/Stock 1",
-      "+6",
-      "Ready",
-    ],
-    [
-      "WH/OUT/0002",
-      "24/05/2025",
-      "Azure Interior",
-      "WH/Stock 1",
-      "Customer",
-      "−4",
-      "Ready",
-    ],
-    [
-      "WH/OUT/0002",
-      "24/05/2025",
-      "Azure Interior",
-      "WH/Stock 2",
-      "Customer",
-      "−2",
-      "Ready",
-    ],
-    [
-      "ADJ/0008",
-      "23/05/2025",
-      "Internal",
-      "WH/Stock 1",
-      "WH/Stock 1",
-      "+2",
-      "Done",
-    ],
-  ]
+  const [entries, setEntries] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  
+  const [search, setSearch] = useState("")
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const res = await ledgerService.getLedgerEntries({ limit: "100" })
+      setEntries(res.entries || res.data || [])
+    } catch (err: any) {
+      setError(err.message || "Failed to load ledger entries")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const filteredEntries = entries.filter((entry) => {
+    const term = search.toLowerCase()
+    return (
+      entry.transactionNumber?.toLowerCase().includes(term) ||
+      entry.referenceNumber?.toLowerCase().includes(term) ||
+      entry.product?.name?.toLowerCase().includes(term) ||
+      entry.operationType?.toLowerCase().includes(term)
+    )
+  })
+
   return (
     <div className="grid gap-6">
       <PageHeading
         eyebrow="Inventory"
         title="Move History"
-        description="Every inventory movement between source and destination locations."
-        action={<Button icon="plus">New</Button>}
+        description="A read-only log of every inventory movement and stock level change."
       />
       <Card className="overflow-hidden">
-        <ListToolbar
-          search="Search by reference or contact…"
-          view={view}
-          setView={setView}
-        />
-        {view === "list" ? (
+        <div className="border-b border-line p-4">
+          <Input
+            placeholder="Search by reference, product, or type..."
+            icon="search"
+            value={search}
+            onChange={setSearch}
+          />
+        </div>
+        
+        {loading && !entries.length ? (
+          <div className="p-12 text-center text-muted">Loading history...</div>
+        ) : error ? (
+          <div className="p-12 text-center text-danger">{error}</div>
+        ) : filteredEntries.length === 0 ? (
+          <div className="p-12 text-center text-muted">No move history found.</div>
+        ) : (
           <DataTable
             columns={[
-              "Reference",
+              "Transaction / Ref",
               "Date",
-              "Contact",
-              "From",
-              "To",
-              "Quantity",
-              "Status",
+              "Operation",
+              "Product",
+              "Warehouse",
+              "Location (Source → Dest)",
+              "Qty Change",
+              "Stock (Old → New)",
+              "User"
             ]}
-            rows={rows.map((row) => [
-              <span className="font-bold text-brand">{row[0]}</span>,
-              ...row.slice(1, 5),
+            rows={filteredEntries.map((row) => [
+              <div>
+                <span className="block font-bold text-brand">{row.transactionNumber}</span>
+                <span className="block text-xs text-muted">{row.referenceNumber}</span>
+              </div>,
+              new Date(row.timestamp || row.createdAt).toLocaleString(),
+              <Badge>{row.operationType}</Badge>,
+              <span className="font-semibold text-ink">{row.product?.name || "Unknown"}</span>,
+              row.warehouse?.name || "Unknown",
+              <div className="text-sm">
+                 {row.sourceLocation ? <span className="text-danger">{row.sourceLocation.code}</span> : <span className="text-muted">Ext</span>}
+                 {" → "}
+                 {row.destinationLocation ? <span className="text-success">{row.destinationLocation.code}</span> : <span className="text-muted">Ext</span>}
+              </div>,
               <span
                 className={`font-bold ${
-                  row[5].startsWith("+") ? "text-success" : "text-danger"
+                  row.quantity > 0 ? "text-success" : row.quantity < 0 ? "text-danger" : "text-muted"
                 }`}
               >
-                {row[5]}
+                {row.quantity > 0 ? `+${row.quantity}` : row.quantity}
               </span>,
-              <Badge>{row[6]}</Badge>,
-            ])}
-          />
-        ) : (
-          <Kanban
-            rows={rows.map((row) => [
-              row[0],
-              row[3],
-              row[4],
-              row[2],
-              row[1],
-              row[6],
+              <span className="text-muted text-sm">{row.previousQuantity} → <span className="font-semibold text-ink">{row.newQuantity}</span></span>,
+              row.performedBy?.name || "System"
             ])}
           />
         )}
         <div className="border-t border-line bg-surface/60 px-5 py-4 text-xs text-muted">
-          A reference with multiple products is displayed across multiple rows.
-          Incoming movements are green; outgoing movements are red.
+          All records are generated automatically by the backend upon operation validation/completion. Manual modification is disabled.
         </div>
       </Card>
     </div>
