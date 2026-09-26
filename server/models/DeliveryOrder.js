@@ -57,7 +57,7 @@ const deliveryOrderSchema = new mongoose.Schema(
   }
 );
 
-deliveryOrderSchema.index({ deliveryNumber: 1 });
+
 deliveryOrderSchema.index({ status: 1 });
 
 const DeliveryOrder = mongoose.model('DeliveryOrder', deliveryOrderSchema);

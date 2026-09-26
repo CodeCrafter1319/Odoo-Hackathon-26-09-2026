@@ -58,7 +58,7 @@ const receiptSchema = new mongoose.Schema(
   }
 );
 
-receiptSchema.index({ receiptNumber: 1 });
+
 receiptSchema.index({ status: 1 });
 
 const Receipt = mongoose.model('Receipt', receiptSchema);

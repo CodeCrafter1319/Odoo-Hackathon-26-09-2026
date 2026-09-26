@@ -64,7 +64,7 @@ const stockAdjustmentSchema = new mongoose.Schema(
   }
 );
 
-stockAdjustmentSchema.index({ adjustmentNumber: 1 });
+
 stockAdjustmentSchema.index({ status: 1 });
 
 // Calculate difference before saving

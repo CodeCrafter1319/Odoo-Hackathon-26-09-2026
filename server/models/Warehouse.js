@@ -26,7 +26,7 @@ const warehouseSchema = new mongoose.Schema(
   }
 );
 
-warehouseSchema.index({ code: 1 });
+
 
 const Warehouse = mongoose.model('Warehouse', warehouseSchema);
 export default Warehouse;

@@ -64,7 +64,7 @@ const internalTransferSchema = new mongoose.Schema(
   }
 );
 
-internalTransferSchema.index({ transferNumber: 1 });
+
 internalTransferSchema.index({ status: 1 });
 
 const InternalTransfer = mongoose.model('InternalTransfer', internalTransferSchema);

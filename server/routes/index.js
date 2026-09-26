@@ -5,6 +5,8 @@ const router = express.Router();
 import authRoutes from './authRoutes.js';
 import categoryRoutes from './categoryRoutes.js';
 import productRoutes from './productRoutes.js';
+import warehouseRoutes from './warehouseRoutes.js';
+import locationRoutes from './locationRoutes.js';
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -15,7 +17,8 @@ router.get('/health', (req, res) => {
 router.use('/auth', authRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);
-router.use('/warehouses', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
+router.use('/warehouses', warehouseRoutes);
+router.use('/locations', locationRoutes);
 router.use('/operations', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
 router.use('/ledger', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
 router.use('/dashboard', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));

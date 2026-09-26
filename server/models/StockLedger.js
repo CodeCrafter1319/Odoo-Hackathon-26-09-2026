@@ -72,7 +72,7 @@ const stockLedgerSchema = new mongoose.Schema(
   }
 );
 
-stockLedgerSchema.index({ transactionNumber: 1 });
+
 stockLedgerSchema.index({ product: 1 });
 stockLedgerSchema.index({ timestamp: -1 });
 
