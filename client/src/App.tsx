@@ -1,4 +1,5 @@
-import { FormEvent, ReactNode, useMemo, useState } from "react"
+import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
+import { authService } from "./services/authService"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -2448,12 +2449,25 @@ function WarehouseSettings({
   )
 }
 
-function Login({ onLogin }: { onLogin: () => void }) {
+function Login({ onLogin }: { onLogin: (user: any) => void }) {
   const [signup, setSignup] = useState(false)
-  const submit = (event: FormEvent) => {
+  const [email, setEmail] = useState("")
+  const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    onLogin()
+    setError("")
+    try {
+      const response = await authService.login({ email, password })
+      localStorage.setItem("token", response.token)
+      const user = await authService.getMe()
+      onLogin(user.data || user)
+    } catch (err: any) {
+      setError(err.message || "Login failed")
+    }
   }
+
   return (
     <main className="grid min-h-screen bg-page lg:grid-cols-[0.95fr_1.05fr]">
       <section className="hidden bg-sidebar p-12 text-white lg:flex lg:flex-col">
@@ -2488,7 +2502,7 @@ function Login({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
         <p className="text-xs text-sidebar-muted">
-          © 2025 StockSense Inventory Management
+          &copy; 2025 StockSense Inventory Management
         </p>
       </section>
       <section className="flex items-center justify-center p-6 md:p-12">
@@ -2508,32 +2522,25 @@ function Login({ onLogin }: { onLogin: () => void }) {
           <p className="mt-2 text-sm text-muted">
             {signup
               ? "Enter your details to create a warehouse account."
-              : "Enter your login ID and password to continue."}
+              : "Enter your email and password to continue."}
           </p>
+          {error && <div className="mt-4 rounded-md bg-red-50 p-3 text-sm text-red-600">{error}</div>}
           <form onSubmit={submit} className="mt-8 grid gap-5">
-            <Field label="Login ID">
+            <Field label="Email ID">
               <Input
-                defaultValue={signup ? "" : "avery.morgan"}
-                placeholder="Enter login ID"
+                value={email}
+                onChange={setEmail}
+                placeholder="Enter email"
               />
             </Field>
-            {signup && (
-              <Field label="Email ID">
-                <Input type="email" placeholder="name@company.com" />
-              </Field>
-            )}
             <Field label="Password">
               <Input
                 type="password"
-                defaultValue={signup ? "" : "stocksense"}
+                value={password}
+                onChange={setPassword}
                 placeholder="Enter password"
               />
             </Field>
-            {signup && (
-              <Field label="Re-enter Password">
-                <Input type="password" placeholder="Repeat password" />
-              </Field>
-            )}
             {!signup && (
               <div className="text-right">
                 <button
@@ -2587,10 +2594,29 @@ function Toast({ message, close }: { message: string close: () => void }) {
 }
 
 export default function App() {
-  const [loggedIn, setLoggedIn] = useState(true)
+  const [loggedIn, setLoggedIn] = useState(false)
+  const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
   const [page, setPage] = useState<Page>("Dashboard")
   const [toast, setToast] = useState("")
   const showToast = (message: string) => setToast(message)
+
+  useEffect(() => {
+    const initAuth = async () => {
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const res = await authService.getMe();
+          setUser(res.data || res);
+          setLoggedIn(true);
+        } catch (err) {
+          localStorage.removeItem("token");
+        }
+      }
+      setLoading(false);
+    };
+    initAuth();
+  }, []);
 
   const content = useMemo(() => {
     if (page === "Dashboard") return <Dashboard setPage={setPage} />
@@ -2611,10 +2637,15 @@ export default function App() {
     )
   }, [page])
 
+  if (loading) {
+    return <div className="min-h-screen bg-page flex items-center justify-center">Loading...</div>;
+  }
+
   if (!loggedIn)
     return (
       <Login
-        onLogin={() => {
+        onLogin={(userData) => {
+          setUser(userData)
           setLoggedIn(true)
           setPage("Dashboard")
           showToast("Signed in successfully.")
@@ -2627,7 +2658,11 @@ export default function App() {
       <AppHeader
         page={page}
         setPage={setPage}
-        onLogout={() => setLoggedIn(false)}
+        onLogout={() => {
+          localStorage.removeItem("token");
+          setUser(null);
+          setLoggedIn(false);
+        }}
       />
       <main className="mx-auto max-w-screen-2xl p-4 md:p-7 xl:p-8">
         {content}
