@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
-import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService } from "./services"
+import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService, deliveryService, transferService } from "./services"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -301,6 +301,7 @@ function Badge({ children }: { children: string }) {
     DRAFT: "bg-neutral-soft text-muted",
     Done: "bg-success-soft text-success",
     DONE: "bg-success-soft text-success",
+    IN_TRANSIT: "bg-warning-soft text-warning",
     PICKED: "bg-info-soft text-info",
     PACKED: "bg-info-soft text-info",
     Scheduled: "bg-info-soft text-info",
@@ -1886,87 +1887,119 @@ function InternalTransfers({
 }: {
   showToast: (message: string) => void
 }) {
-  const [records, setRecords] = useState(initialTransfers)
+  const [records, setRecords] = useState<any[]>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
   const [formOpen, setFormOpen] = useState(false)
-  const [form, setForm] = useState(emptyTransfer)
-  const [errors, setErrors] = useState<Record<string, string>>({})
+  const [form, setForm] = useState({
+    sourceWarehouse: "",
+    sourceLocation: "",
+    destinationWarehouse: "",
+    destinationLocation: "",
+    product: "",
+    quantity: "",
+  })
+  const [formError, setFormError] = useState("")
+
   const [search, setSearch] = useState("")
   const [status, setStatus] = useState("All statuses")
   const [source, setSource] = useState("All source warehouses")
   const [destination, setDestination] = useState("All destination warehouses")
 
-  const update = (field: keyof TransferFormState, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }))
-    setErrors((current) => ({ ...current, [field]: "" }))
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [transRes, whRes, locRes, prodRes] = await Promise.all([
+        transferService.getTransfers({ limit: "100" }),
+        warehouseService.getWarehouses({ limit: "100" }),
+        locationService.getLocations({ limit: "100" }),
+        productService.getProducts({ limit: "100" })
+      ])
+      setRecords(transRes.transfers || transRes.data || [])
+      setWarehouses(whRes.data || [])
+      setLocations(locRes.data || [])
+      setProducts(prodRes.data || [])
+    } catch (err: any) {
+      setError(err.message || "Failed to load transfers")
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const submit = (event: FormEvent) => {
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  const update = (field: string, value: string) => {
+    setForm((current) => ({ ...current, [field]: value }))
+    setFormError("")
+  }
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const nextErrors: Record<string, string> = {}
-    if (!form.sourceWarehouse)
-      nextErrors.sourceWarehouse = "Source warehouse is required."
-    if (!form.sourceLocation)
-      nextErrors.sourceLocation = "Source location is required."
-    if (!form.destinationWarehouse)
-      nextErrors.destinationWarehouse = "Destination warehouse is required."
-    if (!form.destinationLocation)
-      nextErrors.destinationLocation = "Destination location is required."
-    if (!form.product) nextErrors.product = "Product is required."
-    if (!form.quantity || Number(form.quantity) <= 0)
-      nextErrors.quantity = "Quantity must be greater than 0."
-    if (!form.scheduledDate)
-      nextErrors.scheduledDate = "Scheduled date is required."
+    setFormError("")
+
     if (
       form.sourceWarehouse &&
       form.sourceLocation &&
       form.sourceWarehouse === form.destinationWarehouse &&
       form.sourceLocation === form.destinationLocation
     ) {
-      nextErrors.destinationLocation =
-        "Source and destination cannot be identical."
-    }
-
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors)
+      setFormError("Source and destination cannot be identical.")
       return
     }
 
-    const date = new Date(`${form.scheduledDate}T00:00:00`)
-    setRecords((current) => [
-      {
-        reference: `INT/2025/${String(current.length + 1).padStart(4, "0")}`,
-        from: `${form.sourceWarehouse} / ${form.sourceLocation}`,
-        to: `${form.destinationWarehouse} / ${form.destinationLocation}`,
-        product: form.product,
-        quantity: form.quantity,
-        scheduledDate: date.toLocaleDateString("en-GB", {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }),
-        status: "Draft",
-      },
-      ...current,
-    ])
-    setForm(emptyTransfer)
-    setErrors({})
-    setFormOpen(false)
-    showToast("Internal transfer created successfully.")
+    try {
+      await transferService.createTransfer({
+        sourceWarehouse: form.sourceWarehouse,
+        sourceLocation: form.sourceLocation,
+        destinationWarehouse: form.destinationWarehouse,
+        destinationLocation: form.destinationLocation,
+        items: [{ product: form.product, quantity: Number(form.quantity) }]
+      })
+      showToast("Internal transfer created successfully.")
+      setForm({ sourceWarehouse: "", sourceLocation: "", destinationWarehouse: "", destinationLocation: "", product: "", quantity: "" })
+      setFormOpen(false)
+      loadData()
+    } catch (err: any) {
+      setFormError(err.message || "Failed to create transfer")
+    }
+  }
+
+  const handleAction = async (id: string, action: 'schedule' | 'start' | 'complete') => {
+    try {
+      if (action === 'schedule') await transferService.scheduleTransfer(id)
+      if (action === 'start') await transferService.startTransfer(id)
+      if (action === 'complete') await transferService.completeTransfer(id)
+      showToast(`Transfer ${action}d successfully.`)
+      loadData()
+    } catch (err: any) {
+      alert(err.message || `Failed to ${action} transfer`)
+    }
   }
 
   const filteredRecords = records.filter((record) => {
     const term = search.toLowerCase()
     const matchesSearch =
-      record.reference.toLowerCase().includes(term) ||
-      record.product.toLowerCase().includes(term)
-    const matchesStatus = status === "All statuses" || record.status === status
-    const matchesSource =
-      source === "All source warehouses" || record.from.startsWith(source)
-    const matchesDestination =
-      destination === "All destination warehouses" ||
-      record.to.startsWith(destination)
+      record.transferNumber?.toLowerCase().includes(term) ||
+      record.items?.[0]?.product?.name?.toLowerCase().includes(term)
+      
+    const matchesStatus = status === "All statuses" || record.status === status || record.status?.toUpperCase() === status.toUpperCase()
+    
+    // Simplistic filtering for source/destination for now since it expects strings
+    const matchesSource = source === "All source warehouses" || record.sourceWarehouse?.name === source || record.sourceWarehouse === source
+    const matchesDestination = destination === "All destination warehouses" || record.destinationWarehouse?.name === destination || record.destinationWarehouse === destination
+      
     return matchesSearch && matchesStatus && matchesSource && matchesDestination
   })
+
+  if (loading && !records.length) return <div className="p-12 text-center text-muted">Loading transfers...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
 
   return (
     <div className="grid gap-6">
@@ -1994,93 +2027,64 @@ function InternalTransfers({
               label="Close form"
               onClick={() => {
                 setFormOpen(false)
-                setForm(emptyTransfer)
-                setErrors({})
+                setForm({ sourceWarehouse: "", sourceLocation: "", destinationWarehouse: "", destinationLocation: "", product: "", quantity: "" })
+                setFormError("")
               }}
             />
           </div>
           <form onSubmit={submit} className="grid gap-5 p-6 md:grid-cols-2">
+            {formError && <div className="text-danger text-sm md:col-span-2">{formError}</div>}
+            
             <Field label="Source Warehouse">
               <Select
                 value={form.sourceWarehouse}
                 onChange={(value) => update("sourceWarehouse", value)}
               >
                 <option value="">Select source warehouse</option>
-                <option>Central</option>
-                <option>East</option>
-                <option>Production</option>
+                {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
               </Select>
-              {errors.sourceWarehouse && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.sourceWarehouse}
-                </span>
-              )}
             </Field>
+            
             <Field label="Source Location">
               <Select
                 value={form.sourceLocation}
                 onChange={(value) => update("sourceLocation", value)}
               >
                 <option value="">Select source location</option>
-                <option>WH / Stock 1</option>
-                <option>WH / Stock 2</option>
-                <option>Stock 1</option>
+                {locations.filter(l => !form.sourceWarehouse || l.warehouse === form.sourceWarehouse).map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
               </Select>
-              {errors.sourceLocation && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.sourceLocation}
-                </span>
-              )}
             </Field>
+            
             <Field label="Destination Warehouse">
               <Select
                 value={form.destinationWarehouse}
                 onChange={(value) => update("destinationWarehouse", value)}
               >
                 <option value="">Select destination warehouse</option>
-                <option>Central</option>
-                <option>East</option>
-                <option>Production</option>
+                {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
               </Select>
-              {errors.destinationWarehouse && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.destinationWarehouse}
-                </span>
-              )}
             </Field>
+            
             <Field label="Destination Location">
               <Select
                 value={form.destinationLocation}
                 onChange={(value) => update("destinationLocation", value)}
               >
                 <option value="">Select destination location</option>
-                <option>WH / Stock 1</option>
-                <option>WH / Stock 3</option>
-                <option>Stock 1</option>
+                {locations.filter(l => !form.destinationWarehouse || l.warehouse === form.destinationWarehouse).map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
               </Select>
-              {errors.destinationLocation && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.destinationLocation}
-                </span>
-              )}
             </Field>
+            
             <Field label="Product">
               <Select
                 value={form.product}
                 onChange={(value) => update("product", value)}
               >
                 <option value="">Select product</option>
-                <option>Desk</option>
-                <option>Table</option>
-                <option>Office Chair</option>
-                <option>Storage Shelf</option>
+                {products.map(p => <option key={p._id} value={p._id}>{p.name}</option>)}
               </Select>
-              {errors.product && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.product}
-                </span>
-              )}
             </Field>
+            
             <Field label="Quantity">
               <Input
                 type="number"
@@ -2088,44 +2092,21 @@ function InternalTransfers({
                 onChange={(value) => update("quantity", value)}
                 placeholder="Enter quantity"
               />
-              {errors.quantity && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.quantity}
-                </span>
-              )}
             </Field>
-            <Field label="Scheduled Date">
-              <Input
-                type="date"
-                value={form.scheduledDate}
-                onChange={(value) => update("scheduledDate", value)}
-              />
-              {errors.scheduledDate && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.scheduledDate}
-                </span>
-              )}
-            </Field>
-            <Field label="Notes (optional)">
-              <textarea
-                value={form.notes}
-                onChange={(event) => update("notes", event.target.value)}
-                placeholder="Add handling or scheduling notes"
-                className="min-h-24 w-full resize-y rounded-lg border border-line bg-white px-3 py-2.5 text-sm text-ink outline-none transition placeholder:text-subtle focus:border-brand focus:ring-2 focus:ring-brand/10"
-              />
-            </Field>
+
             <div className="flex justify-end gap-3 md:col-span-2">
               <Button
+                type="button"
                 variant="secondary"
                 onClick={() => {
                   setFormOpen(false)
-                  setForm(emptyTransfer)
-                  setErrors({})
+                  setForm({ sourceWarehouse: "", sourceLocation: "", destinationWarehouse: "", destinationLocation: "", product: "", quantity: "" })
+                  setFormError("")
                 }}
               >
                 Cancel
               </Button>
-              <Button type="submit" icon="check">
+              <Button type="submit" icon="check" disabled={loading}>
                 Create Transfer
               </Button>
             </div>
@@ -2142,23 +2123,19 @@ function InternalTransfers({
           />
           <Select value={status} onChange={setStatus}>
             <option>All statuses</option>
-            <option>Draft</option>
-            <option>Scheduled</option>
-            <option>In Transit</option>
-            <option>Done</option>
-            <option>Canceled</option>
+            <option value="DRAFT">Draft</option>
+            <option value="SCHEDULED">Scheduled</option>
+            <option value="IN_TRANSIT">In Transit</option>
+            <option value="DONE">Done</option>
+            <option value="CANCELED">Canceled</option>
           </Select>
           <Select value={source} onChange={setSource}>
             <option>All source warehouses</option>
-            <option>Central</option>
-            <option>East</option>
-            <option>Production</option>
+            {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
           </Select>
           <Select value={destination} onChange={setDestination}>
             <option>All destination warehouses</option>
-            <option>Central</option>
-            <option>East</option>
-            <option>Production</option>
+            {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
           </Select>
         </div>
         <DataTable
@@ -2168,20 +2145,32 @@ function InternalTransfers({
             "To",
             "Product",
             "Quantity",
-            "Scheduled Date",
+            "Date",
             "Status",
             "Actions",
           ]}
-          rows={filteredRecords.map((record) => [
-            <span className="font-bold text-brand">{record.reference}</span>,
-            record.from,
-            record.to,
-            record.product,
-            record.quantity,
-            record.scheduledDate,
-            <Badge>{record.status}</Badge>,
-            <IconButton icon="edit" label={`Edit ${record.reference}`} />,
-          ])}
+          rows={filteredRecords.map((record) => {
+            const sw = warehouses.find(w => w._id === (record.sourceWarehouse?._id || record.sourceWarehouse))?.name
+            const sl = locations.find(l => l._id === (record.sourceLocation?._id || record.sourceLocation))?.code
+            const dw = warehouses.find(w => w._id === (record.destinationWarehouse?._id || record.destinationWarehouse))?.name
+            const dl = locations.find(l => l._id === (record.destinationLocation?._id || record.destinationLocation))?.code
+            const p = products.find(p => p._id === (record.items?.[0]?.product?._id || record.items?.[0]?.product))?.name
+
+            return [
+              <span className="font-bold text-brand">{record.transferNumber}</span>,
+              `${sw} / ${sl}`,
+              `${dw} / ${dl}`,
+              p || "Unknown",
+              record.items?.[0]?.quantity || 0,
+              new Date(record.createdAt).toLocaleDateString(),
+              <Badge>{record.status}</Badge>,
+              <div className="flex gap-2">
+                {record.status === 'DRAFT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'schedule')}>Schedule</Button>}
+                {record.status === 'SCHEDULED' && <Button variant="secondary" onClick={() => handleAction(record._id, 'start')}>Start</Button>}
+                {record.status === 'IN_TRANSIT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
+              </div>
+            ]
+          })}
         />
         {!filteredRecords.length && (
           <div className="border-t border-line p-10 text-center text-sm text-muted">
