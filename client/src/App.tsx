@@ -758,6 +758,96 @@ function Dashboard({ setPage, user }: { setPage: (page: Page) => void, user: any
   )
 }
 
+function DataTable({
+  columns,
+  rows,
+  onOpen,
+}: {
+  columns: string[]
+  rows: (string | ReactNode)[][]
+  onOpen?: (row: number) => void
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-left">
+        <thead>
+          <tr className="border-b border-line bg-surface">
+            {columns.map((column) => (
+              <th
+                key={column}
+                className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wide text-muted"
+              >
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              onClick={() => onOpen?.(rowIndex)}
+              className={`border-b border-line/80 last:border-0 hover:bg-surface/70 ${
+                onOpen ? "cursor-pointer" : ""
+              }`}
+            >
+              {row.map((cell, index) => (
+                <td
+                  key={index}
+                  className="whitespace-nowrap px-5 py-4 text-sm text-body"
+                >
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function ListToolbar({
+  search,
+  view,
+  setView,
+}: {
+  search: string
+  view: "list" | "kanban"
+  setView: (view: "list" | "kanban") => void
+}) {
+  return (
+    <div className="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-center">
+      <div className="w-full md:max-w-sm">
+        <Input placeholder={search} icon="search" />
+      </div>
+      <div className="flex items-center gap-2 md:ml-auto">
+        <Select>
+          <option>All statuses</option>
+          <option>Draft</option>
+          <option>Waiting</option>
+          <option>Ready</option>
+          <option>Done</option>
+        </Select>
+        <IconButton
+          icon="list"
+          label="List view"
+          active={view === "list"}
+          onClick={() => setView("list")}
+        />
+        <IconButton
+          icon="columns"
+          label="Kanban view"
+          active={view === "kanban"}
+          onClick={() => setView("kanban")}
+        />
+      </div>
+    </div>
+  )
+}
+
+
+
 function Kanban({ rows }: { rows: string[][] }) {
   return (
     <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-4">
@@ -2959,7 +3049,7 @@ function Login({ onLogin }: { onLogin: (user: any) => void }) {
       const response = await authService.login({ email, password })
       localStorage.setItem("token", response.token)
       const user = await authService.getMe()
-      onLogin(user.data || user)
+      onLogin(user.user || user.data?.user || user.data || user)
     } catch (err: any) {
       setError(err.message || "Login failed")
     }
@@ -3104,8 +3194,8 @@ export default function App() {
       if (token) {
         try {
           const res = await authService.getMe();
-          setUser(res.data || res);
-          setLoggedIn(true);
+          setUser(res.user || res.data?.user || res.data || res);
+          console.log('USER IS', JSON.stringify(res.user || res.data?.user || res.data || res)); setLoggedIn(true);
         } catch (err) {
           localStorage.removeItem("token");
         }
