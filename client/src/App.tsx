@@ -1,5 +1,5 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
-import { authService, dashboardService, productService, categoryService, warehouseService, locationService } from "./services"
+import { authService, dashboardService, productService, categoryService, warehouseService, locationService, receiptService } from "./services"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -294,15 +294,21 @@ function Select({
 function Badge({ children }: { children: string }) {
   const style: Record<string, string> = {
     Ready: "bg-info-soft text-info",
+    READY: "bg-info-soft text-info",
     Waiting: "bg-warning-soft text-warning",
+    WAITING: "bg-warning-soft text-warning",
     Draft: "bg-neutral-soft text-muted",
+    DRAFT: "bg-neutral-soft text-muted",
     Done: "bg-success-soft text-success",
+    DONE: "bg-success-soft text-success",
     Scheduled: "bg-info-soft text-info",
+    SCHEDULED: "bg-info-soft text-info",
     "In Transit": "bg-warning-soft text-warning",
     Pending: "bg-warning-soft text-warning",
     Approved: "bg-info-soft text-info",
     Received: "bg-success-soft text-success",
     Canceled: "bg-danger-soft text-danger",
+    CANCELED: "bg-danger-soft text-danger",
     "Out of Stock": "bg-danger-soft text-danger",
     "Low Stock": "bg-warning-soft text-warning",
     "In Stock": "bg-success-soft text-success",
@@ -1067,6 +1073,320 @@ function OperationForm({
               quantity is unavailable.
             </div>
           )}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+
+function ReceiptForm({ receipt, close, showToast, refresh, warehouses, locations, products }: any) {
+  const [form, setForm] = useState({
+    supplier: receipt?.supplier || "",
+    warehouse: receipt?.warehouse?._id || receipt?.warehouse || "",
+    destinationLocation: receipt?.destinationLocation?._id || receipt?.destinationLocation || "",
+    items: receipt?.items?.map((i: any) => ({ product: i.product?._id || i.product, quantity: i.quantity })) || [{ product: "", quantity: 1 }]
+  })
+  const [error, setError] = useState("")
+  const [loading, setLoading] = useState(false)
+
+  const isView = !!receipt
+
+  const submit = async (e: any) => {
+    e.preventDefault()
+    if (isView) return
+    setError("")
+    setLoading(true)
+    try {
+      await receiptService.createReceipt({
+        ...form,
+        items: form.items.filter((i: any) => i.product && i.quantity > 0)
+      })
+      showToast("Receipt created successfully.")
+      refresh()
+      close()
+    } catch (err: any) {
+      setError(err.message || "Failed to create receipt")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const validate = async () => {
+    if (!receipt) return
+    setError("")
+    setLoading(true)
+    try {
+      await receiptService.validateReceipt(receipt._id)
+      showToast("Receipt validated successfully \u2014 stock increased.")
+      refresh()
+      close()
+    } catch (err: any) {
+      setError(err.message || "Failed to validate receipt")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="grid gap-6">
+      <PageHeading
+        eyebrow="Operations / Receipt"
+        title="Receipt"
+        description="Create and validate an incoming stock operation."
+      />
+      <Card>
+        <div className="flex flex-col gap-4 border-b border-line p-5 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex flex-wrap gap-2">
+            {isView && receipt.status !== 'DONE' && receipt.status !== 'CANCELED' && (
+              <Button icon="check" onClick={validate} disabled={loading}>
+                Validate
+              </Button>
+            )}
+            <Button variant="danger" icon="x" onClick={close}>
+              {isView ? "Close" : "Cancel"}
+            </Button>
+          </div>
+          {isView && (
+            <div className="flex items-center gap-2">
+              <Badge>{receipt.status}</Badge>
+            </div>
+          )}
+        </div>
+        
+        {isView && (
+          <div className="border-b border-line bg-surface/60 px-6 py-5">
+            <p className="text-xs font-bold uppercase tracking-widest text-muted">
+              Reference
+            </p>
+            <p className="mt-1 text-xl font-bold text-ink">
+              {receipt.receiptNumber}
+            </p>
+          </div>
+        )}
+
+        <form onSubmit={submit}>
+          <div className="grid gap-5 p-6 md:grid-cols-2">
+            {error && <div className="text-danger text-sm md:col-span-2">{error}</div>}
+            
+            <Field label="Receive From (Supplier)">
+              <Input
+                value={form.supplier}
+                onChange={(v) => setForm({ ...form, supplier: v })}
+                placeholder="Select vendor"
+                disabled={isView}
+              />
+            </Field>
+
+            <Field label="Warehouse">
+              <Select
+                value={form.warehouse}
+                onChange={(v) => setForm({ ...form, warehouse: v })}
+                disabled={isView}
+              >
+                <option value="">Select warehouse</option>
+                {warehouses.map((w: any) => (
+                  <option key={w._id} value={w._id}>{w.name}</option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Destination Location">
+              <Select
+                value={form.destinationLocation}
+                onChange={(v) => setForm({ ...form, destinationLocation: v })}
+                disabled={isView}
+              >
+                <option value="">Select location</option>
+                {locations
+                  .filter((l: any) => !form.warehouse || l.warehouse === form.warehouse)
+                  .map((l: any) => (
+                  <option key={l._id} value={l._id}>{l.name}</option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <div className="border-t border-line">
+            <div className="flex items-center justify-between px-6 py-4">
+              <div>
+                <h2 className="font-bold text-ink">Products</h2>
+                <p className="mt-0.5 text-xs text-muted">
+                  Products included in this operation
+                </p>
+              </div>
+              {!isView && (
+                <Button 
+                  type="button"
+                  variant="secondary" 
+                  icon="plus" 
+                  onClick={() => setForm({ ...form, items: [...form.items, { product: "", quantity: 1 }] })}
+                >
+                  Add product
+                </Button>
+              )}
+            </div>
+            
+            <DataTable
+              columns={["Product", "Quantity"]}
+              rows={form.items.map((item: any, idx: number) => [
+                isView ? (
+                  <span className="font-semibold text-ink">
+                    {products.find((p: any) => p._id === item.product)?.name || item.product?.name || "Unknown"}
+                  </span>
+                ) : (
+                  <Select
+                    value={item.product}
+                    onChange={(v) => {
+                      const newItems = [...form.items];
+                      newItems[idx].product = v;
+                      setForm({ ...form, items: newItems })
+                    }}
+                  >
+                    <option value="">Select product</option>
+                    {products.map((p: any) => (
+                      <option key={p._id} value={p._id}>{p.name} ({p.sku})</option>
+                    ))}
+                  </Select>
+                ),
+                isView ? (
+                  <span className="font-bold text-ink">{item.quantity}</span>
+                ) : (
+                  <div className="w-28">
+                    <Input 
+                      type="number" 
+                      value={item.quantity.toString()} 
+                      onChange={(v) => {
+                        const newItems = [...form.items];
+                        newItems[idx].quantity = Number(v);
+                        setForm({ ...form, items: newItems })
+                      }} 
+                    />
+                  </div>
+                )
+              ])}
+            />
+            
+            {!isView && (
+              <div className="p-5 flex justify-end border-t border-line">
+                 <Button type="submit" icon="check" disabled={loading}>
+                   Create Receipt
+                 </Button>
+              </div>
+            )}
+          </div>
+        </form>
+      </Card>
+    </div>
+  )
+}
+
+function ReceiptsPage({ showToast }: { showToast: (message: string) => void }) {
+  const [receipts, setReceipts] = useState<any[]>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
+  const [products, setProducts] = useState<any[]>([])
+  
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [search, setSearch] = useState("")
+  
+  const [formOpen, setFormOpen] = useState(false)
+  const [selectedReceipt, setSelectedReceipt] = useState<any>(null)
+
+  const loadData = async () => {
+    try {
+      setLoading(true)
+      const [recRes, whRes, locRes, prodRes] = await Promise.all([
+        receiptService.getReceipts({ limit: "100" }),
+        warehouseService.getWarehouses({ limit: "100" }),
+        locationService.getLocations({ limit: "100" }),
+        productService.getProducts({ limit: "100" })
+      ])
+      setReceipts(recRes.data || [])
+      setWarehouses(whRes.data || [])
+      setLocations(locRes.data || [])
+      setProducts(prodRes.data || [])
+    } catch (err: any) {
+      setError(err.message || "Failed to load receipts")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadData()
+  }, [])
+
+  if (formOpen || selectedReceipt) {
+    return (
+      <ReceiptForm 
+        receipt={selectedReceipt} 
+        close={() => { setFormOpen(false); setSelectedReceipt(null); }} 
+        showToast={showToast} 
+        refresh={loadData}
+        warehouses={warehouses}
+        locations={locations}
+        products={products}
+      />
+    )
+  }
+
+  const visibleReceipts = receipts.filter(r => 
+    r.receiptNumber?.toLowerCase().includes(search.toLowerCase()) ||
+    r.supplier?.toLowerCase().includes(search.toLowerCase())
+  )
+
+  if (loading) return <div className="p-12 text-center text-muted">Loading receipts...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
+
+  return (
+    <div className="grid gap-6">
+      <PageHeading
+        eyebrow="Operations"
+        title="Receipts"
+        description="All incoming stock operations, shown in list view."
+        action={
+          <Button icon="plus" onClick={() => setFormOpen(true)}>
+            New
+          </Button>
+        }
+      />
+      <Card className="overflow-hidden">
+        <div className="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-center">
+          <div className="w-full md:max-w-sm">
+            <Input
+              placeholder="Search receipt by reference or contact..."
+              icon="search"
+              value={search}
+              onChange={setSearch}
+            />
+          </div>
+        </div>
+        
+        {visibleReceipts.length === 0 ? (
+          <div className="p-8 text-center text-muted">No receipts found.</div>
+        ) : (
+          <DataTable
+            columns={[
+              "Reference",
+              "Supplier",
+              "Warehouse",
+              "Date",
+              "Status",
+            ]}
+            rows={visibleReceipts.map((row) => [
+              <span className="font-bold text-brand">{row.receiptNumber}</span>,
+              row.supplier,
+              warehouses.find(w => w._id === (row.warehouse?._id || row.warehouse))?.name || "Unknown",
+              new Date(row.createdAt).toLocaleDateString(),
+              <Badge>{row.status}</Badge>,
+            ])}
+            onOpen={(idx) => setSelectedReceipt(visibleReceipts[idx])}
+          />
+        )}
+        <div className="flex items-center justify-between border-t border-line px-5 py-4 text-xs text-muted">
+          <span>{visibleReceipts.length} operations</span>
         </div>
       </Card>
     </div>
