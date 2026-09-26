@@ -367,15 +367,7 @@ const topNav: { label: string page?: Page menu?: Page[] }[] = [
   { label: "Settings", menu: ["Warehouse", "Locations"] },
 ]
 
-function AppHeader({
-  page,
-  setPage,
-  onLogout,
-}: {
-  page: Page
-  setPage: (page: Page) => void
-  onLogout: () => void
-}) {
+function AppHeader({ page, setPage, onLogout, user }: { page: Page, setPage: (page: Page) => void, onLogout: () => void, user: any }) {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const [profile, setProfile] = useState(false)
@@ -467,15 +459,15 @@ function AppHeader({
               className="flex items-center gap-2 rounded-lg p-1.5 hover:bg-surface"
             >
               <span className="grid size-9 place-items-center rounded-full bg-sidebar text-xs font-bold text-white">
-                AM
-              </span>
+    {user?.name ? user.name.split(' ').map((n: string) => n[0]).join('').substring(0, 2).toUpperCase() : 'U'}
+  </span>
               <span className="hidden text-left md:block">
                 <span className="block text-sm font-bold text-ink">
-                  Avery Morgan
-                </span>
+    {user?.name || "User"}
+  </span>
                 <span className="block text-xs text-muted">
-                  Inventory Manager
-                </span>
+    {user?.role === 'warehouse_staff' ? 'Warehouse Staff' : 'Inventory Manager'}
+  </span>
               </span>
               <Icon
                 name="chevron"
@@ -655,7 +647,7 @@ function DashboardCard({
   )
 }
 
-function Dashboard({ setPage }: { setPage: (page: Page) => void }) {
+function Dashboard({ setPage, user }: { setPage: (page: Page) => void, user: any }) {
   const [data, setData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -762,148 +754,6 @@ function Dashboard({ setPage }: { setPage: (page: Page) => void }) {
           </div>
         </div>
       </Card>
-    </div>
-  )
-}
-
-const receiptRows = [
-  [
-    "WH/IN/0001",
-    "Vendor",
-    "WH/Stock 1",
-    "Azure Interior",
-    "24 May 2025",
-    "Ready",
-  ],
-  [
-    "WH/IN/0002",
-    "Vendor",
-    "WH/Stock 1",
-    "Brightline Supply",
-    "25 May 2025",
-    "Ready",
-  ],
-  [
-    "WH/IN/0003",
-    "Vendor",
-    "WH/Stock 2",
-    "Nova Components",
-    "27 May 2025",
-    "Waiting",
-  ],
-]
-
-const deliveryRows = [
-  [
-    "WH/OUT/0001",
-    "WH/Stock 1",
-    "Customer",
-    "Azure Interior",
-    "24 May 2025",
-    "Ready",
-  ],
-  [
-    "WH/OUT/0002",
-    "WH/Stock 1",
-    "Customer",
-    "Mason Retail",
-    "25 May 2025",
-    "Ready",
-  ],
-  [
-    "WH/OUT/0003",
-    "WH/Stock 2",
-    "Customer",
-    "North & Pine",
-    "27 May 2025",
-    "Waiting",
-  ],
-]
-
-function DataTable({
-  columns,
-  rows,
-  onOpen,
-}: {
-  columns: string[]
-  rows: (string | ReactNode)[][]
-  onOpen?: (row: number) => void
-}) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-left">
-        <thead>
-          <tr className="border-b border-line bg-surface">
-            {columns.map((column) => (
-              <th
-                key={column}
-                className="whitespace-nowrap px-5 py-3 text-xs font-bold uppercase tracking-wide text-muted"
-              >
-                {column}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, rowIndex) => (
-            <tr
-              key={rowIndex}
-              onClick={() => onOpen?.(rowIndex)}
-              className={`border-b border-line/80 last:border-0 hover:bg-surface/70 ${
-                onOpen ? "cursor-pointer" : ""
-              }`}
-            >
-              {row.map((cell, index) => (
-                <td
-                  key={index}
-                  className="whitespace-nowrap px-5 py-4 text-sm text-body"
-                >
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-function ListToolbar({
-  search,
-  view,
-  setView,
-}: {
-  search: string
-  view: "list" | "kanban"
-  setView: (view: "list" | "kanban") => void
-}) {
-  return (
-    <div className="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-center">
-      <div className="w-full md:max-w-sm">
-        <Input placeholder={search} icon="search" />
-      </div>
-      <div className="flex items-center gap-2 md:ml-auto">
-        <Select>
-          <option>All statuses</option>
-          <option>Draft</option>
-          <option>Waiting</option>
-          <option>Ready</option>
-          <option>Done</option>
-        </Select>
-        <IconButton
-          icon="list"
-          label="List view"
-          active={view === "list"}
-          onClick={() => setView("list")}
-        />
-        <IconButton
-          icon="columns"
-          label="Kanban view"
-          active={view === "kanban"}
-          onClick={() => setView("kanban")}
-        />
-      </div>
     </div>
   )
 }
@@ -1090,7 +940,7 @@ function OperationForm({
 }
 
 
-function ReceiptForm({ receipt, close, showToast, refresh, warehouses, locations, products }: any) {
+function ReceiptForm({ receipt, close, showToast, refresh, warehouses, locations, products, user }: any) {
   const [form, setForm] = useState({
     supplier: receipt?.supplier || "",
     warehouse: receipt?.warehouse?._id || receipt?.warehouse || "",
@@ -1148,7 +998,7 @@ function ReceiptForm({ receipt, close, showToast, refresh, warehouses, locations
       <Card>
         <div className="flex flex-col gap-4 border-b border-line p-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">
-            {isView && receipt.status !== 'DONE' && receipt.status !== 'CANCELED' && (
+            {isView && receipt.status !== 'DONE' && receipt.status !== 'CANCELED' && user?.role === 'inventory_manager' && (
               <Button icon="check" onClick={validate} disabled={loading}>
                 Validate
               </Button>
@@ -1291,7 +1141,7 @@ function ReceiptForm({ receipt, close, showToast, refresh, warehouses, locations
   )
 }
 
-function ReceiptsPage({ showToast }: { showToast: (message: string) => void }) {
+function ReceiptsPage({ showToast, user }: { showToast: (message: string) => void, user: any }) {
   const [receipts, setReceipts] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -1313,7 +1163,7 @@ function ReceiptsPage({ showToast }: { showToast: (message: string) => void }) {
         locationService.getLocations({ limit: "100" }),
         productService.getProducts({ limit: "100" })
       ])
-      setReceipts(recRes.data || [])
+      setReceipts(recRes.receipts || recRes.data || [])
       setWarehouses(whRes.data || [])
       setLocations(locRes.data || [])
       setProducts(prodRes.data || [])
@@ -1330,7 +1180,7 @@ function ReceiptsPage({ showToast }: { showToast: (message: string) => void }) {
 
   if (formOpen || selectedReceipt) {
     return (
-      <ReceiptForm 
+      <ReceiptForm user={user} 
         receipt={selectedReceipt} 
         close={() => { setFormOpen(false); setSelectedReceipt(null); }} 
         showToast={showToast} 
@@ -1433,7 +1283,7 @@ function DeliveryStepper({ status }: { status: string }) {
   )
 }
 
-function DeliveryForm({ delivery, close, showToast, refresh, warehouses, locations, products }: any) {
+function DeliveryForm({ delivery, close, showToast, refresh, warehouses, locations, products, user }: any) {
   const [form, setForm] = useState({
     customer: delivery?.customer || "",
     warehouse: delivery?.warehouse?._id || delivery?.warehouse || "",
@@ -1494,13 +1344,13 @@ function DeliveryForm({ delivery, close, showToast, refresh, warehouses, locatio
       <Card>
         <div className="flex flex-col gap-4 border-b border-line p-5 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap gap-2">
-            {isView && delivery.status === 'DRAFT' && (
+            {isView && delivery.status === 'DRAFT' && user?.role === 'inventory_manager' && (
               <Button icon="check" onClick={() => handleAction('pick')} disabled={loading}>Pick Items</Button>
             )}
-            {isView && delivery.status === 'PICKED' && (
+            {isView && delivery.status === 'PICKED' && user?.role === 'inventory_manager' && (
               <Button icon="check" onClick={() => handleAction('pack')} disabled={loading}>Pack Items</Button>
             )}
-            {isView && delivery.status === 'PACKED' && (
+            {isView && delivery.status === 'PACKED' && user?.role === 'inventory_manager' && (
               <Button icon="check" onClick={() => handleAction('validate')} disabled={loading}>Validate Delivery</Button>
             )}
             <Button variant="danger" icon="x" onClick={close}>
@@ -1641,7 +1491,7 @@ function DeliveryForm({ delivery, close, showToast, refresh, warehouses, locatio
   )
 }
 
-function DeliveryPage({ showToast }: { showToast: (message: string) => void }) {
+function DeliveryPage({ showToast, user }: { showToast: (message: string) => void, user: any }) {
   const [deliveries, setDeliveries] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -1663,7 +1513,7 @@ function DeliveryPage({ showToast }: { showToast: (message: string) => void }) {
         locationService.getLocations({ limit: "100" }),
         productService.getProducts({ limit: "100" })
       ])
-      setDeliveries(delRes.data || [])
+      setDeliveries(delRes.deliveryOrders || delRes.deliveries || delRes.data || [])
       setWarehouses(whRes.data || [])
       setLocations(locRes.data || [])
       setProducts(prodRes.data || [])
@@ -1680,7 +1530,7 @@ function DeliveryPage({ showToast }: { showToast: (message: string) => void }) {
 
   if (formOpen || selectedDelivery) {
     return (
-      <DeliveryForm 
+      <DeliveryForm user={user} 
         delivery={selectedDelivery} 
         close={() => { setFormOpen(false); setSelectedDelivery(null); }} 
         showToast={showToast} 
@@ -1753,79 +1603,6 @@ function DeliveryPage({ showToast }: { showToast: (message: string) => void }) {
   )
 }
 
-function OperationsList({
-  delivery,
-  showToast,
-}: {
-  delivery: boolean
-  showToast: (message: string) => void
-}) {
-  const [view, setView] = useState<"list" | "kanban">("list")
-  const [form, setForm] = useState(false)
-  const rows = delivery ? deliveryRows : receiptRows
-  const title = delivery ? "Delivery" : "Receipts"
-
-  if (form)
-    return (
-      <OperationForm
-        delivery={delivery}
-        close={() => setForm(false)}
-        showToast={showToast}
-      />
-    )
-
-  return (
-    <div className="grid gap-6">
-      <PageHeading
-        eyebrow="Operations"
-        title={title}
-        description={
-          delivery
-            ? "All outgoing stock operations, shown in list view by default."
-            : "All incoming stock operations, shown in list view by default."
-        }
-        action={
-          <Button icon="plus" onClick={() => setForm(true)}>
-            New
-          </Button>
-        }
-      />
-      <Card className="overflow-hidden">
-        <ListToolbar
-          search={`Search ${
-            delivery ? "delivery" : "receipt"
-          } by reference or contact…`}
-          view={view}
-          setView={setView}
-        />
-        {view === "list" ? (
-          <DataTable
-            columns={[
-              "Reference",
-              "From",
-              "To",
-              "Contact",
-              "Schedule Date",
-              "Status",
-            ]}
-            rows={rows.map((row) => [
-              <span className="font-bold text-brand">{row[0]}</span>,
-              ...row.slice(1, 5),
-              <Badge>{row[5]}</Badge>,
-            ])}
-            onOpen={() => setForm(true)}
-          />
-        ) : (
-          <Kanban rows={rows} />
-        )}
-        <div className="flex items-center justify-between border-t border-line px-5 py-4 text-xs text-muted">
-          <span>3 operations</span>
-          <span>Updated a few seconds ago</span>
-        </div>
-      </Card>
-    </div>
-  )
-}
 
 type TransferRecord = {
   reference: string
@@ -1889,11 +1666,7 @@ const emptyTransfer: TransferFormState = {
   notes: "",
 }
 
-function InternalTransfers({
-  showToast,
-}: {
-  showToast: (message: string) => void
-}) {
+function InternalTransfers({ showToast, user }: { showToast: (message: string) => void, user: any }) {
   const [records, setRecords] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -2014,11 +1787,9 @@ function InternalTransfers({
         eyebrow="Operations"
         title="Internal Transfers"
         description="Move stock between warehouses and locations."
-        action={
-          <Button icon="plus" onClick={() => setFormOpen(true)}>
-            New Transfer
-          </Button>
-        }
+        action={user?.role === 'inventory_manager' && <Button  icon="plus" onClick={() => setFormOpen(true)}>
+              New Transfer
+          </Button>}
       />
       {formOpen && (
         <Card>
@@ -2113,9 +1884,9 @@ function InternalTransfers({
               >
                 Cancel
               </Button>
-              <Button type="submit" icon="check" disabled={loading}>
+              {user?.role === 'inventory_manager' && (<Button  type="submit" icon="check" disabled={loading}>
                 Create Transfer
-              </Button>
+              </Button>)}
             </div>
           </form>
         </Card>
@@ -2172,9 +1943,9 @@ function InternalTransfers({
               new Date(record.createdAt).toLocaleDateString(),
               <Badge>{record.status}</Badge>,
               <div className="flex gap-2">
-                {record.status === 'DRAFT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'schedule')}>Schedule</Button>}
-                {record.status === 'SCHEDULED' && <Button variant="secondary" onClick={() => handleAction(record._id, 'start')}>Start</Button>}
-                {record.status === 'IN_TRANSIT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
+                {record.status === 'DRAFT' && user?.role === 'inventory_manager' && <Button variant="secondary" onClick={() => handleAction(record._id, 'schedule')}>Schedule</Button>}
+                {record.status === 'SCHEDULED' && user?.role === 'inventory_manager' && <Button variant="secondary" onClick={() => handleAction(record._id, 'start')}>Start</Button>}
+                {record.status === 'IN_TRANSIT' && user?.role === 'inventory_manager' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
               </div>
             ]
           })}
@@ -2241,11 +2012,7 @@ function DifferenceValue({ value }: { value: number }) {
   return <span className="font-bold text-danger">{value}</span>
 }
 
-function InventoryAdjustments({
-  showToast,
-}: {
-  showToast: (message: string) => void
-}) {
+function InventoryAdjustments({ showToast, user }: { showToast: (message: string) => void, user: any }) {
   const [records, setRecords] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [locations, setLocations] = useState<any[]>([])
@@ -2364,11 +2131,9 @@ function InventoryAdjustments({
         eyebrow="Operations"
         title="Inventory Adjustments"
         description="Correct and update physical stock levels."
-        action={
-          <Button icon="plus" onClick={() => setFormOpen(true)}>
-            New Adjustment
-          </Button>
-        }
+        action={user?.role === 'inventory_manager' && <Button  icon="plus" onClick={() => setFormOpen(true)}>
+              New Adjustment
+          </Button>}
       />
       {formOpen && (
         <Card>
@@ -2473,9 +2238,9 @@ function InventoryAdjustments({
               >
                 Cancel
               </Button>
-              <Button type="submit" icon="check" disabled={loading}>
+              {user?.role === 'inventory_manager' && (<Button  type="submit" icon="check" disabled={loading}>
                 Create Adjustment
-              </Button>
+              </Button>)}
             </div>
           </form>
         </Card>
@@ -2535,8 +2300,8 @@ function InventoryAdjustments({
               record.reason,
               <Badge>{record.status}</Badge>,
               <div className="flex gap-2">
-                {record.status === 'DRAFT' && <Button variant="secondary" onClick={() => handleAction(record._id, 'approve')}>Approve</Button>}
-                {record.status === 'APPROVED' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
+                {record.status === 'DRAFT' && user?.role === 'inventory_manager' && <Button  variant="secondary" onClick={() => handleAction(record._id, 'approve')}>Approve</Button>}
+                {record.status === 'APPROVED' && user?.role === 'inventory_manager' && <Button variant="secondary" onClick={() => handleAction(record._id, 'complete')}>Complete</Button>}
               </div>
             ]
           })}
@@ -2631,7 +2396,7 @@ const initialProducts: ProductRecord[] = [
   },
 ]
 
-function Products({ showToast }: { showToast: (message: string) => void }) {
+function Products({ showToast, user }: { showToast: (message: string) => void, user: any }) {
   const [products, setProducts] = useState<any[]>([])
   const [categories, setCategories] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
@@ -2834,9 +2599,9 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
               >
                 Cancel
               </Button>
-              <Button type="submit" icon="check">
+              {user?.role === 'inventory_manager' && (<Button  type="submit" icon="check">
                 Create Product
-              </Button>
+              </Button>)}
             </div>
           </form>
         </Card>
@@ -2852,9 +2617,9 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
             />
           </div>
           <div className="flex gap-2 md:ml-auto">
-            <Button icon="plus" onClick={() => setFormOpen(true)}>
+            {user?.role === 'inventory_manager' && (<Button  icon="plus" onClick={() => setFormOpen(true)}>
               New product
-            </Button>
+            </Button>)}
           </div>
         </div>
         {visibleProducts.length === 0 ? (
@@ -2895,7 +2660,7 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
   )
 }
 
-function MoveHistory() {
+function MoveHistory({ user }: { user: any }) {
   const [entries, setEntries] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -2998,15 +2763,7 @@ function MoveHistory() {
   )
 }
 
-function WarehouseSettings({
-  locations,
-  setPage,
-  showToast,
-}: {
-  locations?: boolean
-  setPage: (page: Page) => void
-  showToast: (message: string) => void
-}) {
+function WarehouseSettings({ locations, setPage, showToast, user }: { locations?: boolean, setPage: (page: Page) => void, showToast: (message: string) => void, user: any }) {
   const [dataList, setDataList] = useState<any[]>([])
   const [warehouses, setWarehouses] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -3146,9 +2903,9 @@ function WarehouseSettings({
               </Field>
             )}
             <div className="flex justify-end">
-              <Button type="submit" icon="check">
+              {user?.role === 'inventory_manager' && (<Button  type="submit" icon="check">
                 Save {locations ? "location" : "warehouse"}
-              </Button>
+              </Button>)}
             </div>
           </form>
         </Card>
@@ -3359,21 +3116,19 @@ export default function App() {
   }, []);
 
   const content = useMemo(() => {
-    if (page === "Dashboard") return <Dashboard setPage={setPage} />
-    if (page === "Receipts")
-      return <OperationsList delivery={false} showToast={showToast} />
-    if (page === "Delivery")
-      return <OperationsList delivery showToast={showToast} />
+    if (page === "Dashboard") return <Dashboard user={user}  setPage={setPage} />
+    if (page === "Receipts") return <ReceiptsPage showToast={showToast} user={user} />
+    if (page === "Delivery") return <DeliveryPage showToast={showToast} user={user} />
     if (page === "Internal Transfers")
-      return <InternalTransfers showToast={showToast} />
+      return <InternalTransfers user={user}  showToast={showToast} />
     if (page === "Inventory Adjustments")
-      return <InventoryAdjustments showToast={showToast} />
-    if (page === "Products") return <Products showToast={showToast} />
-    if (page === "Move History") return <MoveHistory />
+      return <InventoryAdjustments user={user}  showToast={showToast} />
+    if (page === "Products") return <Products user={user}  showToast={showToast} />
+    if (page === "Move History") return <MoveHistory user={user}  />
     if (page === "Warehouse")
-      return <WarehouseSettings setPage={setPage} showToast={showToast} />
+      return <WarehouseSettings user={user}  setPage={setPage} showToast={showToast} />
     return (
-      <WarehouseSettings locations setPage={setPage} showToast={showToast} />
+      <WarehouseSettings user={user}  locations setPage={setPage} showToast={showToast} />
     )
   }, [page])
 
@@ -3396,15 +3151,16 @@ export default function App() {
   return (
     <div className="min-h-screen bg-page text-body">
       <AppHeader
-        page={page}
-        setPage={setPage}
-        onLogout={() => {
-          localStorage.removeItem("token");
-          setUser(null);
-          setLoggedIn(false);
-        }}
-      />
-      <main className="mx-auto max-w-screen-2xl p-4 md:p-7 xl:p-8">
+          page={page}
+          setPage={setPage}
+          onLogout={() => {
+            localStorage.removeItem("token");
+            setUser(null);
+            setLoggedIn(false);
+          }}
+          user={user}
+        />
+      <main className={`mx-auto max-w-screen-2xl p-4 md:p-7 xl:p-8 ${user?.role === 'warehouse_staff' ? 'staff-mode' : 'manager-mode'}`}>
         {content}
       </main>
       {toast && <Toast message={toast} close={() => setToast("")} />}

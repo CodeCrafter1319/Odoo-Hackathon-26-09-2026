@@ -24,12 +24,14 @@ const handleResponse = async (response: Response) => {
   } catch (error) {
     // If not JSON, return empty or throw
     if (!response.ok) {
+      if (response.status === 403) throw new Error("You are not authorized to perform this action.");
       throw new Error(response.statusText || 'An error occurred');
     }
     return null;
   }
 
   if (!response.ok) {
+    if (response.status === 403) throw new Error("You are not authorized to perform this action.");
     const errorMsg = data.message || data.error || response.statusText || 'API Request Failed';
     throw new Error(errorMsg);
   }
