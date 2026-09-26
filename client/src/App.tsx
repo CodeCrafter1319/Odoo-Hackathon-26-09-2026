@@ -1,6 +1,5 @@
 import { FormEvent, ReactNode, useMemo, useState, useEffect } from "react"
-import { authService } from "./services/authService"
-import { dashboardService } from "./services/dashboardService"
+import { authService, dashboardService, productService, categoryService, warehouseService, locationService } from "./services"
 
 type Page = "Dashboard" | "Receipts" | "Delivery" | "Internal Transfers" | "Inventory Adjustments" | "Products" | "Move History" | "Warehouse" | "Locations"
 
@@ -304,6 +303,9 @@ function Badge({ children }: { children: string }) {
     Approved: "bg-info-soft text-info",
     Received: "bg-success-soft text-success",
     Canceled: "bg-danger-soft text-danger",
+    "Out of Stock": "bg-danger-soft text-danger",
+    "Low Stock": "bg-warning-soft text-warning",
+    "In Stock": "bg-success-soft text-success",
   }
   return (
     <span
@@ -1955,85 +1957,110 @@ const initialProducts: ProductRecord[] = [
 ]
 
 function Products({ showToast }: { showToast: (message: string) => void }) {
-  const [editing, setEditing] = useState<number | null>(null)
-  const [products, setProducts] = useState(initialProducts)
+  const [products, setProducts] = useState<any[]>([])
+  const [categories, setCategories] = useState<any[]>([])
+  const [warehouses, setWarehouses] = useState<any[]>([])
+  const [locations, setLocations] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+
   const [formOpen, setFormOpen] = useState(false)
-  const [form, setForm] = useState(emptyProduct)
+  const [form, setForm] = useState<any>({
+    name: "", sku: "", category: "", uom: "", reorderLevel: "", initialStock: "", warehouse: "", location: ""
+  })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [search, setSearch] = useState("")
-  const [locationFilter, setLocationFilter] = useState("All locations")
 
-  const update = (field: keyof ProductFormState, value: string) => {
-    setForm((current) => ({ ...current, [field]: value }))
+  useEffect(() => {
+    let mounted = true
+    const loadData = async () => {
+      try {
+        setLoading(true)
+        const [prodRes, catRes, whRes, locRes] = await Promise.all([
+          productService.getProducts({ limit: "100" }),
+          categoryService.getCategories({ limit: "100" }),
+          warehouseService.getWarehouses({ limit: "100" }),
+          locationService.getLocations({ limit: "100" })
+        ])
+        if (mounted) {
+          setProducts(prodRes.data || [])
+          setCategories(catRes.data || [])
+          setWarehouses(whRes.data || [])
+          setLocations(locRes.data || [])
+        }
+      } catch (err: any) {
+        if (mounted) setError(err.message || "Failed to load products")
+      } finally {
+        if (mounted) setLoading(false)
+      }
+    }
+    loadData()
+    return () => { mounted = false }
+  }, [])
+
+  const update = (field: string, value: string) => {
+    setForm((current: any) => ({ ...current, [field]: value }))
     setErrors((current) => ({ ...current, [field]: "" }))
   }
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault()
-    const nextErrors: Record<string, string> = {}
-    if (!form.name.trim()) nextErrors.name = "Product name is required."
-    if (!form.sku.trim()) nextErrors.sku = "SKU / Code is required."
-    if (!form.category) nextErrors.category = "Category is required."
-    if (!form.uom) nextErrors.uom = "Unit of measure is required."
-    if (!form.reorderLevel || Number(form.reorderLevel) < 0)
-      nextErrors.reorderLevel = "Enter a valid reorder level."
-    if (!form.initialStock || Number(form.initialStock) < 0)
-      nextErrors.initialStock = "Enter a valid initial stock quantity."
-    if (!form.warehouse) nextErrors.warehouse = "Warehouse is required."
-    if (!form.location) nextErrors.location = "Location is required."
-    if (
-      form.sku &&
-      products.some(
-        (product) => product.sku.toLowerCase() === form.sku.toLowerCase(),
-      )
-    )
-      nextErrors.sku = "This SKU already exists."
-
-    if (Object.keys(nextErrors).length) {
-      setErrors(nextErrors)
-      return
-    }
-
-    setProducts((current) => [
-      ...current,
-      {
-        name: form.name.trim(),
-        sku: form.sku.trim().toUpperCase(),
+    try {
+      const payload: any = {
+        name: form.name,
+        sku: form.sku,
         category: form.category,
         uom: form.uom,
-        reorderLevel: form.reorderLevel,
-        active: true,
-        demoUnitCost: "—",
-        balance: {
-          onHand: form.initialStock,
-          freeToUse: form.initialStock,
-          location: `${form.warehouse} / ${form.location}`,
-        },
-      },
-    ])
-    setForm(emptyProduct)
-    setErrors({})
-    setFormOpen(false)
-    showToast(`${form.name.trim()} created successfully.`)
+      }
+      if (form.reorderLevel) payload.reorderLevel = Number(form.reorderLevel)
+      if (form.initialStock) {
+        payload.initialStock = Number(form.initialStock)
+        payload.warehouse = form.warehouse
+        payload.location = form.location
+      }
+
+      await productService.createProduct(payload)
+      showToast(`${form.name} created successfully.`)
+      setFormOpen(false)
+      setForm({ name: "", sku: "", category: "", uom: "", reorderLevel: "", initialStock: "", warehouse: "", location: "" })
+      
+      const prodRes = await productService.getProducts({ limit: "100" })
+      setProducts(prodRes.data || [])
+    } catch (err: any) {
+      setErrors({ form: err.message || "Failed to create product" })
+    }
+  }
+
+  const handleDelete = async (id: string, name: string) => {
+    if (!confirm(`Are you sure you want to delete ${name}?`)) return
+    try {
+      await productService.deleteProduct(id)
+      showToast(`${name} deleted successfully.`)
+      const prodRes = await productService.getProducts({ limit: "100" })
+      setProducts(prodRes.data || [])
+    } catch (err: any) {
+      alert(err.message || "Failed to delete product")
+    }
   }
 
   const visibleProducts = products.filter((product) => {
     const term = search.toLowerCase()
-    const matchesSearch =
+    return (
       product.name.toLowerCase().includes(term) ||
-      product.sku.toLowerCase().includes(term)
-    const matchesLocation =
-      locationFilter === "All locations" ||
-      product.balance.location.includes(locationFilter)
-    return matchesSearch && matchesLocation
+      product.sku.toLowerCase().includes(term) ||
+      (product.category?.name || "").toLowerCase().includes(term)
+    )
   })
+
+  if (loading) return <div className="p-12 text-center text-muted">Loading products...</div>
+  if (error) return <div className="p-12 text-center text-danger">{error}</div>
 
   return (
     <div className="grid gap-6">
       <PageHeading
         eyebrow="Inventory"
-        title="Stock"
-        description="Review available product stock and update quantities directly."
+        title="Products"
+        description="Review your product catalog and create new items."
       />
       {formOpen && (
         <Card>
@@ -2049,23 +2076,19 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
               label="Close form"
               onClick={() => {
                 setFormOpen(false)
-                setForm(emptyProduct)
+                setForm({ name: "", sku: "", category: "", uom: "", reorderLevel: "", initialStock: "", warehouse: "", location: "" })
                 setErrors({})
               }}
             />
           </div>
           <form onSubmit={submit} className="grid gap-5 p-6 md:grid-cols-2">
+            {errors.form && <div className="md:col-span-2 text-danger text-sm">{errors.form}</div>}
             <Field label="Product Name">
               <Input
                 value={form.name}
                 onChange={(value) => update("name", value)}
                 placeholder="e.g. Steel Storage Shelf"
               />
-              {errors.name && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.name}
-                </span>
-              )}
             </Field>
             <Field label="SKU / Code">
               <Input
@@ -2073,11 +2096,6 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("sku", value)}
                 placeholder="e.g. SSS-3091"
               />
-              {errors.sku && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.sku}
-                </span>
-              )}
             </Field>
             <Field label="Category">
               <Select
@@ -2085,33 +2103,15 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("category", value)}
               >
                 <option value="">Select category</option>
-                <option>Hardware</option>
-                <option>Furniture</option>
-                <option>Electronics</option>
-                <option>Office Supplies</option>
+                {categories.map(c => <option key={c._id} value={c._id}>{c.name}</option>)}
               </Select>
-              {errors.category && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.category}
-                </span>
-              )}
             </Field>
             <Field label="Unit of Measure">
-              <Select
+              <Input
                 value={form.uom}
                 onChange={(value) => update("uom", value)}
-              >
-                <option value="">Select unit of measure</option>
-                <option>Units</option>
-                <option>Boxes</option>
-                <option>Kg</option>
-                <option>Rolls</option>
-              </Select>
-              {errors.uom && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.uom}
-                </span>
-              )}
+                placeholder="e.g. kg, units"
+              />
             </Field>
             <Field label="Reorder Level">
               <Input
@@ -2120,11 +2120,6 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("reorderLevel", value)}
                 placeholder="e.g. 10"
               />
-              {errors.reorderLevel && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.reorderLevel}
-                </span>
-              )}
             </Field>
             <Field label="Initial Stock">
               <Input
@@ -2133,11 +2128,6 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("initialStock", value)}
                 placeholder="e.g. 20"
               />
-              {errors.initialStock && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.initialStock}
-                </span>
-              )}
             </Field>
             <Field label="Warehouse">
               <Select
@@ -2145,15 +2135,8 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("warehouse", value)}
               >
                 <option value="">Select warehouse</option>
-                <option>Main Warehouse</option>
-                <option>Central Warehouse</option>
-                <option>East Warehouse</option>
+                {warehouses.map(w => <option key={w._id} value={w._id}>{w.name}</option>)}
               </Select>
-              {errors.warehouse && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.warehouse}
-                </span>
-              )}
             </Field>
             <Field label="Location">
               <Select
@@ -2161,28 +2144,17 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
                 onChange={(value) => update("location", value)}
               >
                 <option value="">Select location</option>
-                <option>Rack A</option>
-                <option>WH / Stock 1</option>
-                <option>WH / Stock 2</option>
+                {locations.filter(l => !form.warehouse || l.warehouse === form.warehouse).map(l => <option key={l._id} value={l._id}>{l.name}</option>)}
               </Select>
-              {errors.location && (
-                <span className="text-xs font-medium text-danger">
-                  {errors.location}
-                </span>
-              )}
             </Field>
             <div className="rounded-lg border border-info/15 bg-info-soft p-3 text-xs leading-relaxed text-info md:col-span-2">
-              Initial Stock creates the opening stock balance. It is not stored
-              as a permanent product field. Per Unit Cost remains demo data in
-              this frontend.
+              Initial Stock creates the opening stock balance.
             </div>
             <div className="flex justify-end gap-3 md:col-span-2">
               <Button
                 variant="secondary"
                 onClick={() => {
                   setFormOpen(false)
-                  setForm(emptyProduct)
-                  setErrors({})
                 }}
               >
                 Cancel
@@ -2198,78 +2170,51 @@ function Products({ showToast }: { showToast: (message: string) => void }) {
         <div className="flex flex-col gap-3 border-b border-line p-4 md:flex-row md:items-center">
           <div className="w-full md:max-w-sm">
             <Input
-              placeholder="Search products…"
+              placeholder="Search products..."
               icon="search"
               value={search}
               onChange={setSearch}
             />
           </div>
           <div className="flex gap-2 md:ml-auto">
-            <Select value={locationFilter} onChange={setLocationFilter}>
-              <option>All locations</option>
-              <option>WH / Stock 1</option>
-              <option>WH / Stock 2</option>
-              <option>Rack A</option>
-            </Select>
             <Button icon="plus" onClick={() => setFormOpen(true)}>
               New product
             </Button>
           </div>
         </div>
-        <DataTable
-          columns={[
-            "Product",
-            "Per Unit Cost",
-            "On Hand",
-            "Free to Use",
-            "Location",
-            "Action",
-          ]}
-          rows={visibleProducts.map((product, index) => [
-            <span>
-              <span className="block font-bold text-ink">{product.name}</span>
-              <span className="block text-xs text-subtle">{product.sku}</span>
-            </span>,
-            product.demoUnitCost,
-            editing === index ? (
-              <div className="w-24">
-                <Input type="number" defaultValue={product.balance.onHand} />
-              </div>
-            ) : (
-              <span className="font-bold text-ink">
-                {product.balance.onHand}
-              </span>
-            ),
-            product.balance.freeToUse,
-            product.balance.location,
-            editing === index ? (
-              <div className="flex gap-2">
-                <Button
-                  icon="check"
-                  onClick={() => {
-                    setEditing(null)
-                    showToast(`${product.name} stock updated successfully.`)
-                  }}
-                >
-                  Save
-                </Button>
-                <IconButton
-                  icon="x"
-                  label="Cancel"
-                  onClick={() => setEditing(null)}
-                />
-              </div>
-            ) : (
+        {visibleProducts.length === 0 ? (
+          <div className="p-8 text-center text-muted">No products found.</div>
+        ) : (
+          <DataTable
+            columns={[
+              "Product",
+              "Category",
+              "UoM",
+              "Reorder Level",
+              "Stock Quantity",
+              "Stock Status",
+              "Action",
+            ]}
+            rows={visibleProducts.map((product) => [
+              <span>
+                <span className="block font-bold text-ink">{product.name}</span>
+                <span className="block text-xs text-subtle">{product.sku}</span>
+              </span>,
+              product.category?.name || "N/A",
+              product.uom,
+              product.reorderLevel,
+              product.stockQuantity,
+              <Badge>{product.stockStatus}</Badge>,
               <Button
                 variant="secondary"
-                icon="edit"
-                onClick={() => setEditing(index)}
+                icon="x"
+                onClick={() => handleDelete(product._id, product.name)}
               >
-                Update stock
-              </Button>
-            ),
-          ])}
-        />
+                Delete
+              </Button>,
+            ])}
+          />
+        )}
       </Card>
     </div>
   )
