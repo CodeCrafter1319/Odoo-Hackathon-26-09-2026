@@ -42,9 +42,8 @@ stockBalanceSchema.index({ product: 1, location: 1 }, { unique: true });
 stockBalanceSchema.index({ product: 1, warehouse: 1 });
 
 // Ensure availableQuantity is calculated correctly
-stockBalanceSchema.pre('save', function (next) {
+stockBalanceSchema.pre('save', function () {
   this.availableQuantity = this.quantity - this.reservedQuantity;
-  next();
 });
 
 const StockBalance = mongoose.model('StockBalance', stockBalanceSchema);
