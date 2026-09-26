@@ -1,0 +1,54 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --color-page: #f5f7fa;
+  --color-surface: #f8fafc;
+  --color-line: #e4e9f0;
+  --color-ink: #162033;
+  --color-body: #3a4658;
+  --color-muted: #647084;
+  --color-subtle: #909aac;
+  --color-brand: #2563eb;
+  --color-brand-strong: #1d4ed8;
+  --color-brand-soft: #eaf1ff;
+  --color-info: #1671a5;
+  --color-info-soft: #e7f5fb;
+  --color-success: #16845b;
+  --color-success-soft: #e7f8f1;
+  --color-warning: #a86108;
+  --color-warning-soft: #fff4db;
+  --color-danger: #c43d4b;
+  --color-danger-soft: #fff0f1;
+  --color-violet: #7354b8;
+  --color-violet-soft: #f0ebff;
+  --color-neutral-soft: #eef1f5;
+  --color-sidebar: #121b2c;
+  --color-sidebar-active: #22324d;
+  --color-sidebar-ink: #c5cedd;
+  --color-sidebar-muted: #7f8aa0;
+  --color-sidebar-line: #253149;
+  --shadow-card: 0 1px 2px rgb(16 24 40 / 0.04);
+  --shadow-pop: 0 16px 40px rgb(16 24 40 / 0.14);
+}
+
+@layer base {
+  body {
+    min-width: 320px;
+    min-height: 100vh;
+    background: var(--color-page);
+    font-family: var(--font-sans);
+    color: var(--color-body);
+  }
+
+  button,
+  select,
+  input {
+    font: inherit;
+  }
+
+  button {
+    cursor: pointer;
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "description": "Streamline inventory management with a centralized system for inventory managers and warehouse staff, enhancing efficiency and real-time tracking.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}
