@@ -12,6 +12,7 @@ import deliveryOrderRoutes from './deliveryOrderRoutes.js';
 import internalTransferRoutes from './internalTransferRoutes.js';
 import stockAdjustmentRoutes from './stockAdjustmentRoutes.js';
 import stockLedgerRoutes from './stockLedgerRoutes.js';
+import dashboardRoutes from './dashboardRoutes.js';
 
 // Health check endpoint
 router.get('/health', (req, res) => {
@@ -30,6 +31,6 @@ router.use('/internal-transfers', internalTransferRoutes);
 router.use('/stock-adjustments', stockAdjustmentRoutes);
 router.use('/stock-ledger', stockLedgerRoutes);
 router.use('/operations', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
-router.use('/dashboard', (req, res) => res.status(501).json({ message: 'Not Implemented Yet' }));
+router.use('/dashboard', dashboardRoutes);
 
 export default router;
