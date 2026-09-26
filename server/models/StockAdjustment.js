@@ -68,7 +68,7 @@ const stockAdjustmentSchema = new mongoose.Schema(
 stockAdjustmentSchema.index({ status: 1 });
 
 // Calculate difference before saving
-stockAdjustmentSchema.pre('save', function (next) {
+stockAdjustmentSchema.pre('save', function () {
   if (this.items && this.items.length > 0) {
     this.items.forEach((item) => {
       if (item.systemQuantity !== undefined && item.countedQuantity !== undefined) {
@@ -76,7 +76,6 @@ stockAdjustmentSchema.pre('save', function (next) {
       }
     });
   }
-  next();
 });
 
 const StockAdjustment = mongoose.model('StockAdjustment', stockAdjustmentSchema);
